@@ -5,6 +5,8 @@ export interface PruneStats {
   totalBeforePrune: number;
   droppedLowEvidence: number;
   droppedDuplicates: number;
+  droppedPerEntityCap: number;
+  droppedLowSeverity: number;
   droppedByCap: number;
   wasCapped: boolean;
   maxIssues: number;

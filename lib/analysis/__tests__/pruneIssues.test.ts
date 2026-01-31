@@ -3,17 +3,21 @@ import { pruneIssues } from "../pruneIssues";
 import { ProposedIssue } from "../types";
 
 function createIssue(overrides: Partial<ProposedIssue> = {}): ProposedIssue {
+  const impactMin = overrides.impactMin ?? 1000;
+  const impactMax = overrides.impactMax ?? impactMin;
   return {
     issueType: "unpaid_invoice_aging",
     title: "Test Issue",
     severity: "medium",
     confidence: 0.8,
-    impactMin: 1000,
-    impactMax: 1000,
+    impactMin,
+    impactMax,
     currency: "USD",
     rationale: ["Test rationale"],
     evidenceFactIds: ["fact1", "fact2"],
     entityName: "Test Entity",
+    evidenceSummary: null,
+    evidenceStats: null,
     ...overrides,
   };
 }
@@ -238,6 +242,142 @@ describe("pruneIssues", () => {
     });
   });
 
+  describe("maxPerEntity", () => {
+    it("should cap issues per entity to maxPerEntity (default 2)", () => {
+      const issues: ProposedIssue[] = [
+        createIssue({
+          issueType: "unpaid_invoice_aging",
+          entityName: "Acme Corp",
+          severity: "high",
+          title: "Acme Issue 1",
+        }),
+        createIssue({
+          issueType: "recurring_payment_gap",
+          entityName: "Acme Corp",
+          severity: "medium",
+          evidenceFactIds: ["f1", "f2", "f3"],
+          title: "Acme Issue 2",
+        }),
+        createIssue({
+          issueType: "duplicate_charge",
+          entityName: "Acme Corp",
+          severity: "low",
+          evidenceFactIds: ["f1", "f2"],
+          title: "Acme Issue 3",
+        }),
+        createIssue({
+          issueType: "unpaid_invoice_aging",
+          entityName: "Beta Inc",
+          severity: "high",
+          title: "Beta Issue 1",
+        }),
+      ];
+
+      const result = pruneIssues(issues);
+
+      // Should have 2 Acme issues + 1 Beta issue = 3 total
+      expect(result.issues).toHaveLength(3);
+      expect(result.droppedPerEntityCap).toBe(1);
+
+      // Check that only 2 Acme issues made it through
+      const acmeIssues = result.issues.filter((i) => i.entityName === "Acme Corp");
+      expect(acmeIssues).toHaveLength(2);
+    });
+
+    it("should respect custom maxPerEntity", () => {
+      const issues: ProposedIssue[] = [
+        createIssue({
+          issueType: "unpaid_invoice_aging",
+          entityName: "Acme",
+          severity: "high",
+          title: "Issue 1",
+        }),
+        createIssue({
+          issueType: "recurring_payment_gap",
+          entityName: "Acme",
+          severity: "medium",
+          evidenceFactIds: ["f1", "f2", "f3"],
+          title: "Issue 2",
+        }),
+      ];
+
+      const result = pruneIssues(issues, { maxPerEntity: 1 });
+
+      expect(result.issues).toHaveLength(1);
+      expect(result.issues[0].title).toBe("Issue 1"); // Higher severity
+      expect(result.droppedPerEntityCap).toBe(1);
+    });
+  });
+
+  describe("scoring", () => {
+    it("should prefer higher severity issues", () => {
+      const issues: ProposedIssue[] = [
+        createIssue({
+          severity: "low",
+          confidence: 0.9,
+          impactMin: 10000,
+          title: "Low Severity",
+          entityName: "Entity A",
+        }),
+        createIssue({
+          severity: "high",
+          confidence: 0.7,
+          impactMin: 1000,
+          title: "High Severity",
+          entityName: "Entity B",
+        }),
+      ];
+
+      const result = pruneIssues(issues);
+
+      expect(result.issues[0].title).toBe("High Severity");
+    });
+
+    it("should prefer higher confidence when severity is equal", () => {
+      const issues: ProposedIssue[] = [
+        createIssue({
+          severity: "medium",
+          confidence: 0.6,
+          title: "Lower Confidence",
+          entityName: "Entity A",
+        }),
+        createIssue({
+          severity: "medium",
+          confidence: 0.95,
+          title: "Higher Confidence",
+          entityName: "Entity B",
+        }),
+      ];
+
+      const result = pruneIssues(issues);
+
+      expect(result.issues[0].title).toBe("Higher Confidence");
+    });
+
+    it("should consider impact in scoring", () => {
+      const issues: ProposedIssue[] = [
+        createIssue({
+          severity: "medium",
+          confidence: 0.8,
+          impactMin: 100,
+          title: "Low Impact",
+          entityName: "Entity A",
+        }),
+        createIssue({
+          severity: "medium",
+          confidence: 0.8,
+          impactMin: 50000,
+          title: "High Impact",
+          entityName: "Entity B",
+        }),
+      ];
+
+      const result = pruneIssues(issues);
+
+      expect(result.issues[0].title).toBe("High Impact");
+    });
+  });
+
   describe("combined behavior", () => {
     it("should apply all pruning steps in order", () => {
       const issues: ProposedIssue[] = [
@@ -259,6 +399,7 @@ describe("pruneIssues", () => {
         // Low evidence - should be filtered
         createIssue({
           issueType: "amount_drift",
+          entityName: "Gamma",
           evidenceFactIds: ["f1", "f2"],
           title: "Low Evidence",
         }),

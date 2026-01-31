@@ -16,6 +16,8 @@ export interface ExtendedAnalysisResult extends AnalysisResult {
     totalBeforePrune: number;
     droppedLowEvidence: number;
     droppedDuplicates: number;
+    droppedPerEntityCap: number;
+    droppedLowSeverity: number;
     droppedByCap: number;
     wasCapped: boolean;
     maxIssues: number;
@@ -82,6 +84,8 @@ export function runAnalysis(
       totalBeforePrune: pruneResult.totalBeforePrune,
       droppedLowEvidence: pruneResult.droppedLowEvidence,
       droppedDuplicates: pruneResult.droppedDuplicates,
+      droppedPerEntityCap: pruneResult.droppedPerEntityCap,
+      droppedLowSeverity: pruneResult.droppedLowSeverity,
       droppedByCap: pruneResult.droppedByCap,
       wasCapped: pruneResult.wasCapped,
       maxIssues: options.prune?.maxIssues ?? 8,
