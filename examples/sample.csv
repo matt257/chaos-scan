@@ -1,0 +1,9 @@
+date,type,customer,amount,currency,status,notes
+2024-01-15,invoice,Acme Corp,1500.00,USD,unpaid,Net 30 terms
+2024-01-10,payment,TechStart Inc,2500.00,USD,paid,Monthly retainer
+2024-02-01,subscription,CloudService Pro,99.99,USD,active,Annual billing available
+2024-01-20,invoice,Global Systems,3200.00,EUR,unpaid,Q1 consulting
+2024-01-05,payment,Startup Labs,800.00,USD,paid,One-time setup fee
+2024-01-25,discount,Acme Corp,150.00,USD,active,Loyalty discount applied
+2024-02-15,subscription,Analytics Plus,49.99,USD,active,Monthly plan
+2024-01-30,invoice,MegaCorp,5000.00,USD,failed,Payment declined

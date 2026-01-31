@@ -1,0 +1,53 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Scan {
+  id                   String   @id @default(cuid())
+  createdAt            DateTime @default(now())
+  status               String   @default("pending") // pending, processing, completed, failed
+  warnings             Json     @default("[]")
+  extractionConfidence String?  // high, medium, low
+
+  uploads Upload[]
+  facts   Fact[]
+}
+
+model Upload {
+  id         String   @id @default(cuid())
+  createdAt  DateTime @default(now())
+  scanId     String
+  filename   String?
+  mimeType   String?
+  sourceType String   // csv, pdf, image, text
+  rawText    String   @db.Text
+
+  scan Scan @relation(fields: [scanId], references: [id], onDelete: Cascade)
+}
+
+model Fact {
+  id              String   @id @default(cuid())
+  scanId          String
+  factId          String   // from extraction
+  factType        String   // invoice, payment, subscription, discount, note, unknown
+  entityName      String?
+  amountValue     Float?
+  amountCurrency  String?
+  dateValue       String?  // YYYY-MM-DD format
+  dateType        String?  // issued, due, paid, failed, started, ended, unknown
+  status          String   // paid, unpaid, failed, active, canceled, paused, unknown
+  recurrence      String   // one_time, monthly, quarterly, annual, unknown
+  sourceType      String   // csv, pdf, image, text
+  sourceReference String
+  confidence      Float
+  notes           String?
+
+  scan Scan @relation(fields: [scanId], references: [id], onDelete: Cascade)
+
+  @@index([scanId])
+}

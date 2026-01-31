@@ -1,0 +1,39 @@
+Invoice #1234 - Acme Corp
+Date: January 15, 2024
+Amount: $1,500.00 USD
+Status: Unpaid
+Due Date: February 14, 2024
+Terms: Net 30
+
+---
+
+Payment Received from TechStart Inc
+Date: January 10, 2024
+Amount: $2,500.00
+Reference: Monthly retainer payment
+Status: Paid
+
+---
+
+Subscription Started: CloudService Pro
+Customer: Internal
+Start Date: February 1, 2024
+Amount: $99.99/month
+Billing: Monthly, annual option available
+Status: Active
+
+---
+
+Invoice #1235 - Global Systems
+Issued: January 20, 2024
+Amount: 3,200.00 EUR
+Description: Q1 consulting services
+Status: Unpaid
+
+---
+
+Payment from Startup Labs
+Paid on: January 5, 2024
+Amount: $800
+Type: One-time setup fee
+Status: Complete
