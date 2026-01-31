@@ -13,9 +13,11 @@ model Scan {
   status               String   @default("pending")
   warnings             Json     @default("[]")
   extractionConfidence String?  @map("extractionConfidence")
+  executiveSummary     String?  @map("executiveSummary") @db.Text
 
   uploads Upload[]
   facts   Fact[]
+  issues  Issue[]
 
   @@map("Scan")
 }
@@ -51,8 +53,42 @@ model Fact {
   confidence      Float
   notes           String?
 
-  scan Scan @relation(fields: [scanId], references: [id], onDelete: Cascade)
+  scan          Scan            @relation(fields: [scanId], references: [id], onDelete: Cascade)
+  issueEvidence IssueEvidence[]
 
   @@index([scanId])
   @@map("Fact")
+}
+
+model Issue {
+  id            String   @id @default(cuid())
+  scanId        String   @map("scanId")
+  createdAt     DateTime @default(now()) @map("createdAt")
+  issueType     String   @map("issueType")
+  title         String
+  severity      String   // high, medium, low
+  confidence    Float
+  impactMin     Float?   @map("impactMin")
+  impactMax     Float?   @map("impactMax")
+  currency      String?
+  rationaleJson Json     @map("rationaleJson") // Array of rationale bullet points
+  entityName    String?  @map("entityName")
+
+  scan     Scan            @relation(fields: [scanId], references: [id], onDelete: Cascade)
+  evidence IssueEvidence[]
+
+  @@index([scanId])
+  @@map("Issue")
+}
+
+model IssueEvidence {
+  id      String @id @default(cuid())
+  issueId String @map("issueId")
+  factId  String @map("factId")
+
+  issue Issue @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  fact  Fact  @relation(fields: [factId], references: [id], onDelete: Cascade)
+
+  @@unique([issueId, factId])
+  @@map("IssueEvidence")
 }

@@ -1,6 +1,8 @@
 import { prisma } from "@/lib/db/prisma";
 import { notFound } from "next/navigation";
 import Link from "next/link";
+import { ChaosReport } from "./ChaosReport";
+import { FactsTable } from "./FactsTable";
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -14,6 +16,16 @@ export default async function ScanPage({ params }: PageProps) {
     include: {
       facts: true,
       uploads: true,
+      issues: {
+        include: {
+          evidence: {
+            include: {
+              fact: true,
+            },
+          },
+        },
+        orderBy: [{ severity: "asc" }, { confidence: "desc" }],
+      },
     },
   });
 
@@ -49,14 +61,14 @@ export default async function ScanPage({ params }: PageProps) {
     }
   };
 
-  const formatAmount = (value: number | null, currency: string | null) => {
-    if (value === null) return "-";
-    const curr = currency || "USD";
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: curr,
-    }).format(value);
-  };
+  // Sort issues by severity order
+  const severityOrder = { high: 0, medium: 1, low: 2 };
+  const sortedIssues = [...scan.issues].sort((a, b) => {
+    const aSev = severityOrder[a.severity as keyof typeof severityOrder] ?? 3;
+    const bSev = severityOrder[b.severity as keyof typeof severityOrder] ?? 3;
+    if (aSev !== bSev) return aSev - bSev;
+    return b.confidence - a.confidence;
+  });
 
   return (
     <div className="container">
@@ -64,7 +76,7 @@ export default async function ScanPage({ params }: PageProps) {
         &larr; New Scan
       </Link>
 
-      <h1>Scan Results</h1>
+      <h1>Revenue & Billing Chaos Scan</h1>
 
       <div className="card">
         <div className="meta-info">
@@ -96,12 +108,16 @@ export default async function ScanPage({ params }: PageProps) {
             <span className="meta-label">Facts Extracted</span>
             <span className="meta-value">{scan.facts.length}</span>
           </div>
+          <div className="meta-item">
+            <span className="meta-label">Issues Found</span>
+            <span className="meta-value">{scan.issues.length}</span>
+          </div>
         </div>
       </div>
 
       {warnings.length > 0 && (
         <div className="warning">
-          <strong>Warnings:</strong>
+          <strong>Extraction Warnings:</strong>
           <ul>
             {warnings.map((warning, i) => (
               <li key={i}>{warning}</li>
@@ -110,98 +126,13 @@ export default async function ScanPage({ params }: PageProps) {
         </div>
       )}
 
-      <div className="card">
-        <h2>Extracted Facts</h2>
+      <ChaosReport
+        issues={sortedIssues}
+        executiveSummary={scan.executiveSummary}
+        facts={scan.facts}
+      />
 
-        {scan.facts.length === 0 ? (
-          <div className="empty-state">
-            <p>No facts were extracted with sufficient confidence.</p>
-            <p style={{ fontSize: "0.875rem", marginTop: "0.5rem" }}>
-              Facts with confidence below 0.6 are discarded.
-            </p>
-          </div>
-        ) : (
-          <div style={{ overflowX: "auto" }}>
-            <table>
-              <thead>
-                <tr>
-                  <th>Type</th>
-                  <th>Entity</th>
-                  <th>Amount</th>
-                  <th>Date</th>
-                  <th>Status</th>
-                  <th>Recurrence</th>
-                  <th>Source</th>
-                  <th>Confidence</th>
-                  <th>Notes</th>
-                </tr>
-              </thead>
-              <tbody>
-                {scan.facts.map((fact) => (
-                  <tr key={fact.id}>
-                    <td>
-                      <span
-                        style={{
-                          background: "#f0f0f0",
-                          padding: "0.125rem 0.5rem",
-                          borderRadius: "4px",
-                          fontSize: "0.75rem",
-                        }}
-                      >
-                        {fact.factType}
-                      </span>
-                    </td>
-                    <td>{fact.entityName || "-"}</td>
-                    <td>{formatAmount(fact.amountValue, fact.amountCurrency)}</td>
-                    <td>
-                      {fact.dateValue ? (
-                        <>
-                          {fact.dateValue}
-                          <br />
-                          <span style={{ fontSize: "0.75rem", color: "#666" }}>
-                            ({fact.dateType})
-                          </span>
-                        </>
-                      ) : (
-                        "-"
-                      )}
-                    </td>
-                    <td>{fact.status}</td>
-                    <td>{fact.recurrence}</td>
-                    <td>
-                      <span style={{ fontSize: "0.75rem" }}>
-                        {fact.sourceType}
-                        {fact.sourceReference && (
-                          <>
-                            <br />
-                            <span style={{ color: "#666" }}>{fact.sourceReference}</span>
-                          </>
-                        )}
-                      </span>
-                    </td>
-                    <td>
-                      <span
-                        className={`confidence-badge ${
-                          fact.confidence >= 0.8
-                            ? "confidence-high"
-                            : fact.confidence >= 0.6
-                            ? "confidence-medium"
-                            : "confidence-low"
-                        }`}
-                      >
-                        {(fact.confidence * 100).toFixed(0)}%
-                      </span>
-                    </td>
-                    <td style={{ maxWidth: "150px", fontSize: "0.75rem" }}>
-                      {fact.notes || "-"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+      <FactsTable facts={scan.facts} />
     </div>
   );
 }

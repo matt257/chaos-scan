@@ -1,0 +1,91 @@
+import { FactRecord, ProposedIssue } from "../types";
+
+const DEFAULT_AGING_DAYS = 45;
+
+function daysBetween(date1: string, date2: string): number {
+  const d1 = new Date(date1);
+  const d2 = new Date(date2);
+  const diffTime = Math.abs(d2.getTime() - d1.getTime());
+  return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+}
+
+export function detectUnpaidInvoiceAging(
+  facts: FactRecord[],
+  agingDays: number = DEFAULT_AGING_DAYS
+): ProposedIssue[] {
+  const today = new Date().toISOString().split("T")[0];
+  const issues: ProposedIssue[] = [];
+
+  // Find unpaid invoices
+  const unpaidInvoices = facts.filter(
+    (f) =>
+      f.factType === "invoice" &&
+      f.status === "unpaid" &&
+      f.dateValue &&
+      (f.dateType === "due" || f.dateType === "issued")
+  );
+
+  if (unpaidInvoices.length === 0) {
+    return [];
+  }
+
+  // Group by entity
+  const byEntity = new Map<string, FactRecord[]>();
+  for (const inv of unpaidInvoices) {
+    const key = inv.entityName || "_unknown_";
+    if (!byEntity.has(key)) {
+      byEntity.set(key, []);
+    }
+    byEntity.get(key)!.push(inv);
+  }
+
+  for (const [entity, invoices] of byEntity) {
+    const aged = invoices.filter((inv) => {
+      const days = daysBetween(inv.dateValue!, today);
+      return days >= agingDays;
+    });
+
+    if (aged.length === 0) continue;
+
+    // Calculate impact if amounts are present
+    const amountsWithValue = aged.filter((inv) => inv.amountValue !== null);
+    let impactMin: number | null = null;
+    let impactMax: number | null = null;
+    let currency: string | null = null;
+
+    if (amountsWithValue.length > 0) {
+      const total = amountsWithValue.reduce((sum, inv) => sum + (inv.amountValue || 0), 0);
+      impactMin = total;
+      impactMax = total;
+      currency = amountsWithValue[0].amountCurrency;
+    }
+
+    const oldestDays = Math.max(
+      ...aged.map((inv) => daysBetween(inv.dateValue!, today))
+    );
+
+    const rationale: string[] = [
+      `${aged.length} unpaid invoice(s) older than ${agingDays} days`,
+      `Oldest invoice is ${oldestDays} days past ${aged[0].dateType === "due" ? "due date" : "issue date"}`,
+    ];
+
+    if (amountsWithValue.length > 0) {
+      rationale.push(`Total outstanding: ${currency || "USD"} ${impactMin?.toFixed(2)}`);
+    }
+
+    issues.push({
+      issueType: "unpaid_invoice_aging",
+      title: `Aging unpaid invoices for ${entity === "_unknown_" ? "unknown entity" : entity}`,
+      severity: oldestDays > 90 ? "high" : oldestDays > 60 ? "medium" : "low",
+      confidence: Math.min(...aged.map((a) => a.confidence)),
+      impactMin,
+      impactMax,
+      currency,
+      rationale,
+      evidenceFactIds: aged.map((a) => a.id),
+      entityName: entity === "_unknown_" ? null : entity,
+    });
+  }
+
+  return issues;
+}

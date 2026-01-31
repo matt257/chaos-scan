@@ -3,6 +3,9 @@ import { prisma } from "@/lib/db/prisma";
 import { extractFacts } from "@/lib/extraction/openai";
 import { normalizeAndFilter } from "@/lib/normalize/normalizeFacts";
 import { SourceType } from "@/lib/types";
+import { runAnalysis } from "@/lib/analysis/runAnalysis";
+import { generateSummary } from "@/lib/analysis/summarize";
+import { FactRecord } from "@/lib/analysis/types";
 
 function parseCSV(content: string): string {
   const lines = content.trim().split("\n");
@@ -32,6 +35,7 @@ export async function POST(request: NextRequest) {
 
     const uploads: { sourceType: SourceType; content: string; filename?: string }[] = [];
     const allWarnings: string[] = [];
+    const savedFactIds: string[] = [];
 
     // Process CSV file
     if (file) {
@@ -94,7 +98,7 @@ export async function POST(request: NextRequest) {
 
       // Save facts to database
       for (const fact of normalizedFacts) {
-        await prisma.fact.create({
+        const savedFact = await prisma.fact.create({
           data: {
             scanId: scan.id,
             factId: fact.fact_id,
@@ -112,6 +116,61 @@ export async function POST(request: NextRequest) {
             notes: fact.notes,
           },
         });
+        savedFactIds.push(savedFact.id);
+      }
+    }
+
+    // Fetch saved facts for analysis
+    const savedFacts = await prisma.fact.findMany({
+      where: { scanId: scan.id },
+    });
+
+    // Convert to FactRecord format for analysis
+    const factRecords: FactRecord[] = savedFacts.map((f) => ({
+      id: f.id,
+      factType: f.factType,
+      entityName: f.entityName,
+      amountValue: f.amountValue,
+      amountCurrency: f.amountCurrency,
+      dateValue: f.dateValue,
+      dateType: f.dateType,
+      status: f.status,
+      recurrence: f.recurrence,
+      sourceReference: f.sourceReference,
+      confidence: f.confidence,
+    }));
+
+    // Run analysis
+    const analysisResult = runAnalysis(factRecords);
+
+    // Generate summary
+    const summary = await generateSummary(analysisResult.issues);
+
+    // Save issues and evidence
+    for (const issue of analysisResult.issues) {
+      const savedIssue = await prisma.issue.create({
+        data: {
+          scanId: scan.id,
+          issueType: issue.issueType,
+          title: issue.title,
+          severity: issue.severity,
+          confidence: issue.confidence,
+          impactMin: issue.impactMin,
+          impactMax: issue.impactMax,
+          currency: issue.currency,
+          rationaleJson: issue.rationale,
+          entityName: issue.entityName,
+        },
+      });
+
+      // Create evidence links
+      for (const factId of issue.evidenceFactIds) {
+        await prisma.issueEvidence.create({
+          data: {
+            issueId: savedIssue.id,
+            factId: factId,
+          },
+        });
       }
     }
 
@@ -122,6 +181,7 @@ export async function POST(request: NextRequest) {
         status: "completed",
         warnings: allWarnings,
         extractionConfidence,
+        executiveSummary: summary.executiveSummary,
       },
     });
 
