@@ -1,9 +1,13 @@
-export type FactType = "invoice" | "payment" | "subscription" | "discount" | "note" | "unknown";
-export type DateType = "issued" | "due" | "paid" | "failed" | "started" | "ended" | "unknown";
+export type FactType = "invoice" | "payment" | "subscription" | "discount" | "note" | "bank_transaction" | "unknown";
+export type DateType = "issued" | "due" | "paid" | "failed" | "started" | "ended" | "posted" | "unknown";
 export type Status = "paid" | "unpaid" | "failed" | "active" | "canceled" | "paused" | "unknown";
 export type Recurrence = "one_time" | "monthly" | "quarterly" | "annual" | "unknown";
 export type SourceType = "csv" | "pdf" | "image" | "text";
 export type ExtractionConfidence = "high" | "medium" | "low";
+
+// Bank transaction specific types
+export type Direction = "inflow" | "outflow" | "unknown";
+export type ClearingStatus = "cleared" | "pending" | "reversed" | "unknown";
 
 export type Fact = {
   fact_id: string;
@@ -17,6 +21,10 @@ export type Fact = {
   source_reference: string;
   confidence: number; // 0.0–1.0
   notes: string | null;
+  // Bank transaction specific fields
+  direction: Direction;
+  clearing_status: ClearingStatus;
+  raw_amount_text: string | null;
 };
 
 export type ExtractionResult = {

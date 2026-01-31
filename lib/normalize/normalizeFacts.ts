@@ -5,6 +5,8 @@ import {
   Status,
   Recurrence,
   SourceType,
+  Direction,
+  ClearingStatus,
 } from "@/lib/types";
 
 const VALID_FACT_TYPES: FactType[] = [
@@ -13,6 +15,7 @@ const VALID_FACT_TYPES: FactType[] = [
   "subscription",
   "discount",
   "note",
+  "bank_transaction",
   "unknown",
 ];
 const VALID_DATE_TYPES: DateType[] = [
@@ -22,6 +25,14 @@ const VALID_DATE_TYPES: DateType[] = [
   "failed",
   "started",
   "ended",
+  "posted",
+  "unknown",
+];
+const VALID_DIRECTIONS: Direction[] = ["inflow", "outflow", "unknown"];
+const VALID_CLEARING_STATUSES: ClearingStatus[] = [
+  "cleared",
+  "pending",
+  "reversed",
   "unknown",
 ];
 const VALID_STATUSES: Status[] = [
@@ -122,6 +133,17 @@ export function normalizeFact(fact: Fact): Fact {
     notes:
       typeof fact.notes === "string" && fact.notes.trim()
         ? fact.notes.trim()
+        : null,
+    // Bank transaction specific fields
+    direction: validateEnum(fact.direction, VALID_DIRECTIONS, "unknown"),
+    clearing_status: validateEnum(
+      fact.clearing_status,
+      VALID_CLEARING_STATUSES,
+      "unknown"
+    ),
+    raw_amount_text:
+      typeof fact.raw_amount_text === "string" && fact.raw_amount_text.trim()
+        ? fact.raw_amount_text.trim()
         : null,
   };
 }

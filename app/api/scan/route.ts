@@ -114,6 +114,10 @@ export async function POST(request: NextRequest) {
             sourceReference: fact.source_reference,
             confidence: fact.confidence,
             notes: fact.notes,
+            // Bank transaction specific fields
+            direction: fact.direction || "unknown",
+            clearingStatus: fact.clearing_status || "unknown",
+            rawAmountText: fact.raw_amount_text,
           },
         });
         savedFactIds.push(savedFact.id);
@@ -138,6 +142,8 @@ export async function POST(request: NextRequest) {
       recurrence: f.recurrence,
       sourceReference: f.sourceReference,
       confidence: f.confidence,
+      direction: f.direction,
+      clearingStatus: f.clearingStatus,
     }));
 
     // Run analysis with pruning

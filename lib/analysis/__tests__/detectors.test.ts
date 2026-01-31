@@ -17,9 +17,19 @@ function monthDate(year: number, month: number, day: number = 15): string {
   return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
+// Helper to add default bank fields to fact arrays
+type FactWithoutBankFields = Omit<FactRecord, "direction" | "clearingStatus">;
+function f(facts: FactWithoutBankFields[]): FactRecord[] {
+  return facts.map((fact) => ({
+    ...fact,
+    direction: "unknown",
+    clearingStatus: "unknown",
+  }));
+}
+
 describe("detectUnpaidInvoiceAging", () => {
   it("should return empty array when no invoices exist", () => {
-    const facts: FactRecord[] = [
+    const facts = f([
       {
         id: "1",
         factType: "payment",
@@ -33,13 +43,13 @@ describe("detectUnpaidInvoiceAging", () => {
         sourceReference: "row 1",
         confidence: 0.9,
       },
-    ];
+    ]);
     const issues = detectUnpaidInvoiceAging(facts);
     expect(issues).toHaveLength(0);
   });
 
   it("should not flag invoices less than 45 days old", () => {
-    const facts: FactRecord[] = [
+    const facts = f([
       {
         id: "1",
         factType: "invoice",
@@ -53,13 +63,13 @@ describe("detectUnpaidInvoiceAging", () => {
         sourceReference: "row 1",
         confidence: 0.9,
       },
-    ];
+    ]);
     const issues = detectUnpaidInvoiceAging(facts);
     expect(issues).toHaveLength(0);
   });
 
   it("should flag invoices older than 45 days", () => {
-    const facts: FactRecord[] = [
+    const facts = f([
       {
         id: "1",
         factType: "invoice",
@@ -73,7 +83,7 @@ describe("detectUnpaidInvoiceAging", () => {
         sourceReference: "row 1",
         confidence: 0.9,
       },
-    ];
+    ]);
     const issues = detectUnpaidInvoiceAging(facts);
     expect(issues).toHaveLength(1);
     expect(issues[0].issueType).toBe("unpaid_invoice_aging");
@@ -82,7 +92,7 @@ describe("detectUnpaidInvoiceAging", () => {
   });
 
   it("should not flag paid invoices", () => {
-    const facts: FactRecord[] = [
+    const facts = f([
       {
         id: "1",
         factType: "invoice",
@@ -96,13 +106,13 @@ describe("detectUnpaidInvoiceAging", () => {
         sourceReference: "row 1",
         confidence: 0.9,
       },
-    ];
+    ]);
     const issues = detectUnpaidInvoiceAging(facts);
     expect(issues).toHaveLength(0);
   });
 
   it("should return null impact when invoice has no currency", () => {
-    const facts: FactRecord[] = [
+    const facts = f([
       {
         id: "1",
         factType: "invoice",
@@ -116,7 +126,7 @@ describe("detectUnpaidInvoiceAging", () => {
         sourceReference: "row 1",
         confidence: 0.9,
       },
-    ];
+    ]);
     const issues = detectUnpaidInvoiceAging(facts);
     expect(issues).toHaveLength(1);
     expect(issues[0].impactMin).toBeNull();
@@ -124,7 +134,7 @@ describe("detectUnpaidInvoiceAging", () => {
   });
 
   it("should return null impact when invoices have mixed currencies", () => {
-    const facts: FactRecord[] = [
+    const facts = f([
       {
         id: "1",
         factType: "invoice",
@@ -151,7 +161,7 @@ describe("detectUnpaidInvoiceAging", () => {
         sourceReference: "row 2",
         confidence: 0.9,
       },
-    ];
+    ]);
     const issues = detectUnpaidInvoiceAging(facts);
     expect(issues).toHaveLength(1);
     expect(issues[0].impactMin).toBeNull();
@@ -160,7 +170,7 @@ describe("detectUnpaidInvoiceAging", () => {
 
 describe("detectRecurringPaymentGap", () => {
   it("should return empty array when fewer than 3 payments", () => {
-    const facts: FactRecord[] = [
+    const facts = f([
       {
         id: "1",
         factType: "payment",
@@ -187,13 +197,13 @@ describe("detectRecurringPaymentGap", () => {
         sourceReference: "row 2",
         confidence: 0.9,
       },
-    ];
+    ]);
     const issues = detectRecurringPaymentGap(facts);
     expect(issues).toHaveLength(0);
   });
 
   it("should detect gap in monthly payments", () => {
-    const facts: FactRecord[] = [
+    const facts = f([
       {
         id: "1",
         factType: "payment",
@@ -233,7 +243,7 @@ describe("detectRecurringPaymentGap", () => {
         sourceReference: "row 3",
         confidence: 0.9,
       },
-    ];
+    ]);
     const issues = detectRecurringPaymentGap(facts);
     expect(issues).toHaveLength(1);
     expect(issues[0].issueType).toBe("recurring_payment_gap");
@@ -241,7 +251,7 @@ describe("detectRecurringPaymentGap", () => {
   });
 
   it("should not flag consistent monthly payments", () => {
-    const facts: FactRecord[] = [
+    const facts = f([
       {
         id: "1",
         factType: "payment",
@@ -281,7 +291,7 @@ describe("detectRecurringPaymentGap", () => {
         sourceReference: "row 3",
         confidence: 0.9,
       },
-    ];
+    ]);
     const issues = detectRecurringPaymentGap(facts);
     expect(issues).toHaveLength(0);
   });
@@ -289,7 +299,7 @@ describe("detectRecurringPaymentGap", () => {
 
 describe("detectAmountDrift", () => {
   it("should return empty array when fewer than 4 payments", () => {
-    const facts: FactRecord[] = Array.from({ length: 3 }, (_, i) => ({
+    const facts = f(Array.from({ length: 3 }, (_, i) => ({
       id: String(i + 1),
       factType: "payment",
       entityName: "Client A",
@@ -301,13 +311,13 @@ describe("detectAmountDrift", () => {
       recurrence: "monthly",
       sourceReference: `row ${i + 1}`,
       confidence: 0.9,
-    }));
+    })));
     const issues = detectAmountDrift(facts);
     expect(issues).toHaveLength(0);
   });
 
   it("should detect amount drift when recent payments are 20%+ lower", () => {
-    const facts: FactRecord[] = [
+    const facts = f([
       // Stable payments
       ...Array.from({ length: 4 }, (_, i) => ({
         id: String(i + 1),
@@ -349,7 +359,7 @@ describe("detectAmountDrift", () => {
         sourceReference: "row 6",
         confidence: 0.9,
       },
-    ];
+    ]);
     const issues = detectAmountDrift(facts);
     expect(issues).toHaveLength(1);
     expect(issues[0].issueType).toBe("amount_drift");
@@ -357,7 +367,7 @@ describe("detectAmountDrift", () => {
   });
 
   it("should not flag when amounts are stable", () => {
-    const facts: FactRecord[] = Array.from({ length: 6 }, (_, i) => ({
+    const facts = f(Array.from({ length: 6 }, (_, i) => ({
       id: String(i + 1),
       factType: "payment",
       entityName: "Client A",
@@ -369,7 +379,7 @@ describe("detectAmountDrift", () => {
       recurrence: "monthly",
       sourceReference: `row ${i + 1}`,
       confidence: 0.9,
-    }));
+    })));
     const issues = detectAmountDrift(facts);
     expect(issues).toHaveLength(0);
   });
@@ -377,7 +387,7 @@ describe("detectAmountDrift", () => {
 
 describe("detectDuplicateCharges", () => {
   it("should return empty array when no duplicates", () => {
-    const facts: FactRecord[] = [
+    const facts = f([
       {
         id: "1",
         factType: "payment",
@@ -404,13 +414,13 @@ describe("detectDuplicateCharges", () => {
         sourceReference: "row 2",
         confidence: 0.9,
       },
-    ];
+    ]);
     const issues = detectDuplicateCharges(facts);
     expect(issues).toHaveLength(0);
   });
 
   it("should detect duplicate charges on same day with same amount", () => {
-    const facts: FactRecord[] = [
+    const facts = f([
       {
         id: "1",
         factType: "payment",
@@ -437,7 +447,7 @@ describe("detectDuplicateCharges", () => {
         sourceReference: "row 2",
         confidence: 0.9,
       },
-    ];
+    ]);
     const issues = detectDuplicateCharges(facts);
     expect(issues).toHaveLength(1);
     expect(issues[0].issueType).toBe("duplicate_charge");
@@ -446,7 +456,7 @@ describe("detectDuplicateCharges", () => {
   });
 
   it("should not flag different entities on same day with same amount", () => {
-    const facts: FactRecord[] = [
+    const facts = f([
       {
         id: "1",
         factType: "payment",
@@ -473,7 +483,7 @@ describe("detectDuplicateCharges", () => {
         sourceReference: "row 2",
         confidence: 0.9,
       },
-    ];
+    ]);
     const issues = detectDuplicateCharges(facts);
     expect(issues).toHaveLength(0);
   });

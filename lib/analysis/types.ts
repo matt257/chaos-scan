@@ -41,6 +41,9 @@ export interface FactRecord {
   recurrence: string;
   sourceReference: string;
   confidence: number;
+  // Bank transaction specific fields
+  direction: string;
+  clearingStatus: string;
 }
 
 export interface AnalysisResult {

@@ -72,6 +72,8 @@ export async function POST() {
       recurrence: f.recurrence,
       sourceReference: f.sourceReference,
       confidence: f.confidence,
+      direction: f.direction,
+      clearingStatus: f.clearingStatus,
     }));
 
     // Run analysis with pruning (same as regular scan)

@@ -761,3 +761,35 @@ tr:hover {
 .entity-group table {
   margin: 0;
 }
+
+/* Bank Transaction Styles */
+.direction-inflow {
+  color: #059669;
+  font-weight: 500;
+}
+
+.direction-outflow {
+  color: #dc2626;
+  font-weight: 500;
+}
+
+.clearing-badge {
+  display: inline-block;
+  margin-left: 0.5rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  font-size: 0.65rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  vertical-align: middle;
+}
+
+.clearing-pending {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.clearing-reversed {
+  background: #fee2e2;
+  color: #b91c1c;
+}

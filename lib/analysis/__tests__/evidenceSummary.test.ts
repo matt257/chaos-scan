@@ -21,6 +21,8 @@ function createFact(overrides: Partial<FactRecord> = {}): FactRecord {
     recurrence: "monthly",
     sourceReference: "row 1",
     confidence: 0.9,
+    direction: "unknown",
+    clearingStatus: "unknown",
     ...overrides,
   };
 }

@@ -52,6 +52,10 @@ model Fact {
   sourceReference String  @map("sourceReference")
   confidence      Float
   notes           String?
+  // Bank transaction specific fields
+  direction       String  @default("unknown") @map("direction")       // inflow, outflow, unknown
+  clearingStatus  String  @default("unknown") @map("clearingStatus")  // cleared, pending, reversed, unknown
+  rawAmountText   String? @map("rawAmountText")                       // Original amount text before normalization
 
   scan          Scan            @relation(fields: [scanId], references: [id], onDelete: Cascade)
   issueEvidence IssueEvidence[]

@@ -16,19 +16,47 @@ interface Fact {
   sourceReference: string;
   confidence: number;
   notes: string | null;
+  // Bank transaction specific fields
+  direction: string;
+  clearingStatus: string;
 }
 
 interface FactsTableProps {
   facts: Fact[];
 }
 
-function formatAmount(value: number | null, currency: string | null): string {
+function formatAmount(
+  value: number | null,
+  currency: string | null,
+  direction?: string
+): string {
   if (value === null) return "-";
   const curr = currency || "USD";
-  return new Intl.NumberFormat("en-US", {
+  const formatted = new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: curr,
   }).format(value);
+
+  // Add direction indicator for bank transactions
+  if (direction === "inflow") {
+    return `+${formatted}`;
+  } else if (direction === "outflow") {
+    return `-${formatted}`;
+  }
+  return formatted;
+}
+
+function getDirectionClass(direction: string): string {
+  if (direction === "inflow") return "direction-inflow";
+  if (direction === "outflow") return "direction-outflow";
+  return "";
+}
+
+function getClearingStatusLabel(status: string): string | null {
+  if (status === "pending") return "Pending";
+  if (status === "reversed") return "Reversed";
+  // Don't show label for cleared or unknown
+  return null;
 }
 
 export function FactsTable({ facts }: FactsTableProps) {
@@ -81,51 +109,68 @@ export function FactsTable({ facts }: FactsTableProps) {
     return Array.from(groups.entries()).sort((a, b) => a[0].localeCompare(b[0]));
   }, [filteredFacts, groupByEntity]);
 
-  const renderFactRow = (fact: Fact) => (
-    <tr key={fact.id}>
-      <td>
-        <span className="type-badge">{fact.factType}</span>
-      </td>
-      <td>{fact.entityName || "-"}</td>
-      <td>{formatAmount(fact.amountValue, fact.amountCurrency)}</td>
-      <td>
-        {fact.dateValue ? (
-          <>
-            {fact.dateValue}
-            {fact.dateType && (
-              <span className="date-type-hint"> ({fact.dateType})</span>
-            )}
-          </>
-        ) : (
-          "-"
-        )}
-      </td>
-      <td>{fact.status}</td>
-      <td>{fact.recurrence}</td>
-      <td>
-        <span className="source-info">
-          {fact.sourceType}
-          {fact.sourceReference && (
-            <span className="source-ref"> / {fact.sourceReference}</span>
+  const isBankTransaction = (fact: Fact) =>
+    fact.factType === "bank_transaction" || fact.direction !== "unknown";
+
+  const renderFactRow = (fact: Fact) => {
+    const clearingLabel = getClearingStatusLabel(fact.clearingStatus);
+    const showBankInfo = isBankTransaction(fact);
+
+    return (
+      <tr key={fact.id}>
+        <td>
+          <span className="type-badge">{fact.factType}</span>
+        </td>
+        <td>{fact.entityName || "-"}</td>
+        <td>
+          <span className={getDirectionClass(fact.direction)}>
+            {formatAmount(fact.amountValue, fact.amountCurrency, showBankInfo ? fact.direction : undefined)}
+          </span>
+          {showBankInfo && clearingLabel && (
+            <span className={`clearing-badge clearing-${fact.clearingStatus}`}>
+              {clearingLabel}
+            </span>
           )}
-        </span>
-      </td>
-      <td>
-        <span
-          className={`confidence-badge ${
-            fact.confidence >= 0.8
-              ? "confidence-high"
-              : fact.confidence >= 0.6
-              ? "confidence-medium"
-              : "confidence-low"
-          }`}
-        >
-          {(fact.confidence * 100).toFixed(0)}%
-        </span>
-      </td>
-      <td className="notes-cell">{fact.notes || "-"}</td>
-    </tr>
-  );
+        </td>
+        <td>
+          {fact.dateValue ? (
+            <>
+              {fact.dateValue}
+              {fact.dateType && (
+                <span className="date-type-hint"> ({fact.dateType})</span>
+              )}
+            </>
+          ) : (
+            "-"
+          )}
+        </td>
+        <td>{fact.status}</td>
+        <td>{fact.recurrence}</td>
+        <td>
+          <span className="source-info">
+            {fact.sourceType}
+            {fact.sourceReference && (
+              <span className="source-ref"> / {fact.sourceReference}</span>
+            )}
+          </span>
+        </td>
+        <td>
+          <span
+            className={`confidence-badge ${
+              fact.confidence >= 0.8
+                ? "confidence-high"
+                : fact.confidence >= 0.6
+                ? "confidence-medium"
+                : "confidence-low"
+            }`}
+          >
+            {(fact.confidence * 100).toFixed(0)}%
+          </span>
+        </td>
+        <td className="notes-cell">{fact.notes || "-"}</td>
+      </tr>
+    );
+  };
 
   return (
     <div className="card facts-section">
