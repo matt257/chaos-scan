@@ -9,45 +9,50 @@ datasource db {
 
 model Scan {
   id                   String   @id @default(cuid())
-  createdAt            DateTime @default(now())
-  status               String   @default("pending") // pending, processing, completed, failed
+  createdAt            DateTime @default(now()) @map("createdAt")
+  status               String   @default("pending")
   warnings             Json     @default("[]")
-  extractionConfidence String?  // high, medium, low
+  extractionConfidence String?  @map("extractionConfidence")
 
   uploads Upload[]
   facts   Fact[]
+
+  @@map("Scan")
 }
 
 model Upload {
   id         String   @id @default(cuid())
-  createdAt  DateTime @default(now())
-  scanId     String
+  createdAt  DateTime @default(now()) @map("createdAt")
+  scanId     String   @map("scanId")
   filename   String?
-  mimeType   String?
-  sourceType String   // csv, pdf, image, text
-  rawText    String   @db.Text
+  mimeType   String?  @map("mimeType")
+  sourceType String   @map("sourceType")
+  rawText    String   @map("rawText") @db.Text
 
   scan Scan @relation(fields: [scanId], references: [id], onDelete: Cascade)
+
+  @@map("Upload")
 }
 
 model Fact {
-  id              String   @id @default(cuid())
-  scanId          String
-  factId          String   // from extraction
-  factType        String   // invoice, payment, subscription, discount, note, unknown
-  entityName      String?
-  amountValue     Float?
-  amountCurrency  String?
-  dateValue       String?  // YYYY-MM-DD format
-  dateType        String?  // issued, due, paid, failed, started, ended, unknown
-  status          String   // paid, unpaid, failed, active, canceled, paused, unknown
-  recurrence      String   // one_time, monthly, quarterly, annual, unknown
-  sourceType      String   // csv, pdf, image, text
-  sourceReference String
+  id              String  @id @default(cuid())
+  scanId          String  @map("scanId")
+  factId          String  @map("factId")
+  factType        String  @map("factType")
+  entityName      String? @map("entityName")
+  amountValue     Float?  @map("amountValue")
+  amountCurrency  String? @map("amountCurrency")
+  dateValue       String? @map("dateValue")
+  dateType        String? @map("dateType")
+  status          String
+  recurrence      String
+  sourceType      String  @map("sourceType")
+  sourceReference String  @map("sourceReference")
   confidence      Float
   notes           String?
 
   scan Scan @relation(fields: [scanId], references: [id], onDelete: Cascade)
 
   @@index([scanId])
+  @@map("Fact")
 }

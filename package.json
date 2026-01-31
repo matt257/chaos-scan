@@ -11,7 +11,8 @@
     "vercel-build": "prisma generate && next build",
     "prisma:migrate": "prisma migrate dev",
     "prisma:generate": "prisma generate",
-    "prisma:push": "prisma db push"
+    "prisma:push": "prisma db push",
+    "db:introspect": "tsx scripts/db-introspect.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
@@ -28,6 +29,7 @@
     "eslint": "^9.39.2",
     "eslint-config-next": "^16.1.6",
     "prisma": "^5.22.0",
+    "tsx": "^4.21.0",
     "typescript": "^5.9.3"
   }
 }

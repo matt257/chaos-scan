@@ -171,8 +171,56 @@ type Fact = {
 - `npm run build` - Build for production
 - `npm run start` - Start production server
 - `npm run lint` - Run ESLint
-- `npm run prisma:migrate` - Run database migrations
+- `npm run prisma:migrate` - Run database migrations (local dev)
 - `npm run prisma:generate` - Generate Prisma client
+- `npm run db:introspect` - Diagnose database schema issues
+
+## Troubleshooting Production
+
+If you see `The table public.Scan does not exist`:
+
+### Step 1: Verify you're targeting the correct database
+
+```bash
+# Copy DATABASE_URL from Vercel dashboard (Settings > Environment Variables)
+export DATABASE_URL="postgresql://..."
+
+# Introspect the database
+npm run db:introspect
+```
+
+### Step 2: Check the output
+
+- **No tables found**: Migrations never ran. Run `npx prisma migrate deploy`
+- **Tables exist but lowercase** (`scan` instead of `Scan`): Schema already handles this with `@@map`
+- **_prisma_migrations missing**: Run `npx prisma migrate deploy`
+
+### Step 3: Apply migrations to production
+
+```bash
+# With production DATABASE_URL set:
+npx prisma migrate deploy
+
+# Verify again:
+npm run db:introspect
+```
+
+### Step 4: Debug endpoint (production)
+
+Add `DEBUG_TOKEN` to Vercel env vars, then visit:
+```
+https://your-app.vercel.app/api/_debug/db?DEBUG_TOKEN=your-token
+```
+
+This returns JSON with current database, tables, and casing info.
+
+### Common issues
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| No tables | Migrations not applied | `npx prisma migrate deploy` |
+| Wrong database | Wrong DATABASE_URL in Vercel | Copy correct URL from Neon |
+| Tables in wrong schema | Non-public schema | Ensure `?schema=public` in URL or use default |
 
 ## License
 
