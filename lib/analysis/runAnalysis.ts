@@ -5,23 +5,45 @@ import {
   detectAmountDrift,
   detectDuplicateCharges,
 } from "./detectors";
+import { pruneIssues, PruneOptions } from "./pruneIssues";
 
-export function runAnalysis(facts: FactRecord[]): AnalysisResult {
-  const issues: ProposedIssue[] = [];
+export interface AnalysisOptions {
+  prune?: Partial<PruneOptions>;
+}
+
+export interface ExtendedAnalysisResult extends AnalysisResult {
+  pruneStats: {
+    totalBeforePrune: number;
+    droppedLowEvidence: number;
+    droppedDuplicates: number;
+    droppedByCap: number;
+    wasCapped: boolean;
+    maxIssues: number;
+  };
+}
+
+export function runAnalysis(
+  facts: FactRecord[],
+  options: AnalysisOptions = {}
+): ExtendedAnalysisResult {
+  const rawIssues: ProposedIssue[] = [];
   const notFlagged: string[] = [];
 
   // Run all detectors
   const unpaidAging = detectUnpaidInvoiceAging(facts);
-  issues.push(...unpaidAging);
+  rawIssues.push(...unpaidAging);
 
   const paymentGaps = detectRecurringPaymentGap(facts);
-  issues.push(...paymentGaps);
+  rawIssues.push(...paymentGaps);
 
   const amountDrifts = detectAmountDrift(facts);
-  issues.push(...amountDrifts);
+  rawIssues.push(...amountDrifts);
 
   const duplicates = detectDuplicateCharges(facts);
-  issues.push(...duplicates);
+  rawIssues.push(...duplicates);
+
+  // Apply strictness policy: prune and cap issues
+  const pruneResult = pruneIssues(rawIssues, options.prune);
 
   // Build "not flagged" list for transparency
   const invoiceCount = facts.filter((f) => f.factType === "invoice").length;
@@ -53,13 +75,16 @@ export function runAnalysis(facts: FactRecord[]): AnalysisResult {
     }
   }
 
-  // Sort issues by severity (high first) then by confidence
-  const severityOrder = { high: 0, medium: 1, low: 2 };
-  issues.sort((a, b) => {
-    const sevDiff = severityOrder[a.severity] - severityOrder[b.severity];
-    if (sevDiff !== 0) return sevDiff;
-    return b.confidence - a.confidence;
-  });
-
-  return { issues, notFlagged };
+  return {
+    issues: pruneResult.issues,
+    notFlagged,
+    pruneStats: {
+      totalBeforePrune: pruneResult.totalBeforePrune,
+      droppedLowEvidence: pruneResult.droppedLowEvidence,
+      droppedDuplicates: pruneResult.droppedDuplicates,
+      droppedByCap: pruneResult.droppedByCap,
+      wasCapped: pruneResult.wasCapped,
+      maxIssues: options.prune?.maxIssues ?? 8,
+    },
+  };
 }

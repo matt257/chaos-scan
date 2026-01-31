@@ -46,6 +46,8 @@ const NOT_FLAGGED_DEFAULTS = [
   "Manual review may identify additional issues",
 ];
 
+const MAX_ISSUES_CAP = 8;
+
 function formatCurrency(amount: number | null, currency: string | null): string {
   if (amount === null) return "unknown";
   const curr = currency || "USD";
@@ -160,6 +162,9 @@ export function ChaosReport({ issues, executiveSummary, facts }: ChaosReportProp
   const mediumCount = issues.filter((i) => i.severity === "medium").length;
   const lowCount = issues.filter((i) => i.severity === "low").length;
 
+  // Check if we hit the cap
+  const isCapped = issues.length >= MAX_ISSUES_CAP;
+
   // Calculate total impact
   const issuesWithImpact = issues.filter((i) => i.impactMin !== null);
   let totalImpact: string | null = null;
@@ -242,7 +247,14 @@ export function ChaosReport({ issues, executiveSummary, facts }: ChaosReportProp
 
       {/* Flagged Issues */}
       <div className="card">
-        <h3>Flagged Issues</h3>
+        <div className="section-header">
+          <h3>Flagged Issues</h3>
+          {isCapped && (
+            <span className="cap-message">
+              Showing top {MAX_ISSUES_CAP} issues (conservative cap)
+            </span>
+          )}
+        </div>
         {issues.length === 0 ? (
           <div className="no-issues">
             <p>No high-confidence issues detected (conservative scan).</p>

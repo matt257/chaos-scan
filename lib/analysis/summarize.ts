@@ -1,9 +1,19 @@
 import OpenAI from "openai";
-import { ProposedIssue, ISSUE_TYPE_LABELS } from "./types";
+import { ProposedIssue } from "./types";
 
-interface SummaryResult {
+export interface PruneStats {
+  totalBeforePrune: number;
+  droppedLowEvidence: number;
+  droppedDuplicates: number;
+  droppedByCap: number;
+  wasCapped: boolean;
+  maxIssues: number;
+}
+
+export interface SummaryResult {
   executiveSummary: string;
   issueTitles: string[];
+  capMessage: string | null;
 }
 
 function formatCurrency(amount: number | null, currency: string | null): string {
@@ -16,7 +26,32 @@ function formatCurrency(amount: number | null, currency: string | null): string 
   }).format(amount);
 }
 
-function generateDeterministicSummary(issues: ProposedIssue[]): SummaryResult {
+function generateCapMessage(pruneStats: PruneStats | null): string | null {
+  if (!pruneStats) return null;
+
+  const parts: string[] = [];
+
+  if (pruneStats.wasCapped) {
+    parts.push(`Showing top ${pruneStats.maxIssues} issues (conservative cap)`);
+  }
+
+  if (pruneStats.droppedLowEvidence > 0) {
+    parts.push(`${pruneStats.droppedLowEvidence} low-evidence issue(s) filtered`);
+  }
+
+  if (pruneStats.droppedDuplicates > 0) {
+    parts.push(`${pruneStats.droppedDuplicates} duplicate(s) removed`);
+  }
+
+  return parts.length > 0 ? parts.join(" · ") : null;
+}
+
+function generateDeterministicSummary(
+  issues: ProposedIssue[],
+  pruneStats: PruneStats | null
+): SummaryResult {
+  const capMessage = generateCapMessage(pruneStats);
+
   if (issues.length === 0) {
     return {
       executiveSummary:
@@ -25,6 +60,7 @@ function generateDeterministicSummary(issues: ProposedIssue[]): SummaryResult {
         "amount drift, and duplicate charges. This does not guarantee absence of issues—" +
         "only that none met the detection thresholds.",
       issueTitles: [],
+      capMessage,
     };
   }
 
@@ -59,7 +95,7 @@ function generateDeterministicSummary(issues: ProposedIssue[]): SummaryResult {
 
   const issueTitles = issues.slice(0, 3).map((i) => i.title);
 
-  return { executiveSummary, issueTitles };
+  return { executiveSummary, issueTitles, capMessage };
 }
 
 const SUMMARY_PROMPT = `You are a financial audit assistant. Given a list of detected billing/revenue issues, write a brief executive summary paragraph (2-3 sentences max).
@@ -74,17 +110,21 @@ Rules:
 
 Issues:`;
 
-export async function generateSummary(issues: ProposedIssue[]): Promise<SummaryResult> {
+export async function generateSummary(
+  issues: ProposedIssue[],
+  pruneStats: PruneStats | null = null
+): Promise<SummaryResult> {
   const apiKey = process.env.OPENAI_API_KEY;
+  const capMessage = generateCapMessage(pruneStats);
 
   // Fallback to deterministic summary if no API key
   if (!apiKey || apiKey === "sk-...") {
-    return generateDeterministicSummary(issues);
+    return generateDeterministicSummary(issues, pruneStats);
   }
 
   // Also use deterministic for empty issues
   if (issues.length === 0) {
-    return generateDeterministicSummary(issues);
+    return generateDeterministicSummary(issues, pruneStats);
   }
 
   try {
@@ -117,15 +157,16 @@ export async function generateSummary(issues: ProposedIssue[]): Promise<SummaryR
     const aiSummary = response.choices[0]?.message?.content?.trim();
 
     if (!aiSummary) {
-      return generateDeterministicSummary(issues);
+      return generateDeterministicSummary(issues, pruneStats);
     }
 
     return {
       executiveSummary: aiSummary,
       issueTitles: issues.slice(0, 3).map((i) => i.title),
+      capMessage,
     };
   } catch (error) {
     console.error("AI summary generation failed, using fallback:", error);
-    return generateDeterministicSummary(issues);
+    return generateDeterministicSummary(issues, pruneStats);
   }
 }
