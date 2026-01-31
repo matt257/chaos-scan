@@ -1,4 +1,5 @@
 import { FactRecord, ProposedIssue } from "../types";
+import { calculateDriftImpact, formatImpactRationale } from "../impact";
 
 const MIN_OCCURRENCES = 4;
 const DRIFT_THRESHOLD = 0.2; // 20%
@@ -73,28 +74,29 @@ export function detectAmountDrift(facts: FactRecord[]): ProposedIssue[] {
 
     if (drift < DRIFT_THRESHOLD) continue;
 
-    // Calculate annual impact
-    const monthlyDifference = priorMedian - recentAvg;
-    const impactMin = monthlyDifference * 12;
-    const impactMax = monthlyDifference * 12;
-    const currency = sorted[0].amountCurrency;
+    // Calculate impact using strict rules
+    const impact = calculateDriftImpact(sorted, priorMedian, recentAvg);
 
     const rationale: string[] = [
       `${sorted.length} monthly payments analyzed`,
-      `Prior stable amount: ${currency || "USD"} ${priorMedian.toFixed(2)}/month`,
-      `Recent average: ${currency || "USD"} ${recentAvg.toFixed(2)}/month`,
+      `Prior stable amount: ${priorMedian.toFixed(2)}/month`,
+      `Recent average: ${recentAvg.toFixed(2)}/month`,
       `Decrease of ${(drift * 100).toFixed(1)}% detected`,
-      `Potential annual impact: ${currency || "USD"} ${impactMin.toFixed(2)}`,
     ];
+
+    const impactRationale = formatImpactRationale(impact);
+    if (impactRationale) {
+      rationale.push(impactRationale);
+    }
 
     issues.push({
       issueType: "amount_drift",
       title: `Payment amount decreased for ${entity === "_unknown_" ? "unknown entity" : entity}`,
       severity: drift >= 0.4 ? "high" : drift >= 0.3 ? "medium" : "low",
       confidence: Math.min(...sorted.map((p) => p.confidence)),
-      impactMin,
-      impactMax,
-      currency,
+      impactMin: impact.impactMin,
+      impactMax: impact.impactMax,
+      currency: impact.currency,
       rationale,
       evidenceFactIds: sorted.map((p) => p.id),
       entityName: entity === "_unknown_" ? null : entity,

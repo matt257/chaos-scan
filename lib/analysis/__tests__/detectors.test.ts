@@ -100,6 +100,62 @@ describe("detectUnpaidInvoiceAging", () => {
     const issues = detectUnpaidInvoiceAging(facts);
     expect(issues).toHaveLength(0);
   });
+
+  it("should return null impact when invoice has no currency", () => {
+    const facts: FactRecord[] = [
+      {
+        id: "1",
+        factType: "invoice",
+        entityName: "Acme",
+        amountValue: 1000,
+        amountCurrency: null, // Missing currency
+        dateValue: daysAgo(60),
+        dateType: "issued",
+        status: "unpaid",
+        recurrence: "one_time",
+        sourceReference: "row 1",
+        confidence: 0.9,
+      },
+    ];
+    const issues = detectUnpaidInvoiceAging(facts);
+    expect(issues).toHaveLength(1);
+    expect(issues[0].impactMin).toBeNull();
+    expect(issues[0].currency).toBeNull();
+  });
+
+  it("should return null impact when invoices have mixed currencies", () => {
+    const facts: FactRecord[] = [
+      {
+        id: "1",
+        factType: "invoice",
+        entityName: "Acme",
+        amountValue: 1000,
+        amountCurrency: "USD",
+        dateValue: daysAgo(60),
+        dateType: "issued",
+        status: "unpaid",
+        recurrence: "one_time",
+        sourceReference: "row 1",
+        confidence: 0.9,
+      },
+      {
+        id: "2",
+        factType: "invoice",
+        entityName: "Acme",
+        amountValue: 500,
+        amountCurrency: "EUR", // Different currency
+        dateValue: daysAgo(60),
+        dateType: "issued",
+        status: "unpaid",
+        recurrence: "one_time",
+        sourceReference: "row 2",
+        confidence: 0.9,
+      },
+    ];
+    const issues = detectUnpaidInvoiceAging(facts);
+    expect(issues).toHaveLength(1);
+    expect(issues[0].impactMin).toBeNull();
+  });
 });
 
 describe("detectRecurringPaymentGap", () => {

@@ -1,4 +1,5 @@
 import { FactRecord, ProposedIssue } from "../types";
+import { calculateDuplicateImpact, formatImpactRationale } from "../impact";
 
 export function detectDuplicateCharges(facts: FactRecord[]): ProposedIssue[] {
   const issues: ProposedIssue[] = [];
@@ -28,26 +29,38 @@ export function detectDuplicateCharges(facts: FactRecord[]): ProposedIssue[] {
   for (const [key, group] of groups) {
     if (group.length < 2) continue;
 
-    const [entity, date, amount] = key.split("|");
-    const amountNum = parseFloat(amount);
-    const duplicatedAmount = amountNum * (group.length - 1);
+    const [entity, date] = key.split("|");
+
+    // Calculate impact using strict rules
+    const impact = calculateDuplicateImpact(group);
 
     const rationale: string[] = [
       `${group.length} payments with identical amount on the same day`,
       `Entity: ${entity === "_unknown_" ? "Unknown" : entity}`,
       `Date: ${date}`,
-      `Amount: ${group[0].amountCurrency || "USD"} ${amountNum.toFixed(2)} each`,
-      `Potential overcharge: ${group[0].amountCurrency || "USD"} ${duplicatedAmount.toFixed(2)}`,
     ];
+
+    // Only show amount if we have it
+    if (group[0].amountValue !== null) {
+      const amountStr = group[0].amountCurrency
+        ? `${group[0].amountCurrency} ${group[0].amountValue.toFixed(2)}`
+        : `${group[0].amountValue.toFixed(2)}`;
+      rationale.push(`Amount: ${amountStr} each`);
+    }
+
+    const impactRationale = formatImpactRationale(impact);
+    if (impactRationale) {
+      rationale.push(impactRationale);
+    }
 
     issues.push({
       issueType: "duplicate_charge",
       title: `Possible duplicate charges for ${entity === "_unknown_" ? "unknown entity" : entity}`,
       severity: "low", // Always low severity as this needs manual verification
       confidence: Math.min(...group.map((p) => p.confidence)) * 0.8, // Reduce confidence
-      impactMin: duplicatedAmount,
-      impactMax: duplicatedAmount,
-      currency: group[0].amountCurrency,
+      impactMin: impact.impactMin,
+      impactMax: impact.impactMax,
+      currency: impact.currency,
       rationale,
       evidenceFactIds: group.map((p) => p.id),
       entityName: entity === "_unknown_" ? null : entity,

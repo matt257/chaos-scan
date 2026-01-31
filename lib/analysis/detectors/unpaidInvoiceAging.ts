@@ -1,4 +1,5 @@
 import { FactRecord, ProposedIssue } from "../types";
+import { calculateUnpaidInvoiceImpact, formatImpactRationale } from "../impact";
 
 const DEFAULT_AGING_DAYS = 45;
 
@@ -47,18 +48,8 @@ export function detectUnpaidInvoiceAging(
 
     if (aged.length === 0) continue;
 
-    // Calculate impact if amounts are present
-    const amountsWithValue = aged.filter((inv) => inv.amountValue !== null);
-    let impactMin: number | null = null;
-    let impactMax: number | null = null;
-    let currency: string | null = null;
-
-    if (amountsWithValue.length > 0) {
-      const total = amountsWithValue.reduce((sum, inv) => sum + (inv.amountValue || 0), 0);
-      impactMin = total;
-      impactMax = total;
-      currency = amountsWithValue[0].amountCurrency;
-    }
+    // Calculate impact using strict rules
+    const impact = calculateUnpaidInvoiceImpact(aged);
 
     const oldestDays = Math.max(
       ...aged.map((inv) => daysBetween(inv.dateValue!, today))
@@ -69,8 +60,9 @@ export function detectUnpaidInvoiceAging(
       `Oldest invoice is ${oldestDays} days past ${aged[0].dateType === "due" ? "due date" : "issue date"}`,
     ];
 
-    if (amountsWithValue.length > 0) {
-      rationale.push(`Total outstanding: ${currency || "USD"} ${impactMin?.toFixed(2)}`);
+    const impactRationale = formatImpactRationale(impact);
+    if (impactRationale) {
+      rationale.push(impactRationale);
     }
 
     issues.push({
@@ -78,9 +70,9 @@ export function detectUnpaidInvoiceAging(
       title: `Aging unpaid invoices for ${entity === "_unknown_" ? "unknown entity" : entity}`,
       severity: oldestDays > 90 ? "high" : oldestDays > 60 ? "medium" : "low",
       confidence: Math.min(...aged.map((a) => a.confidence)),
-      impactMin,
-      impactMax,
-      currency,
+      impactMin: impact.impactMin,
+      impactMax: impact.impactMax,
+      currency: impact.currency,
       rationale,
       evidenceFactIds: aged.map((a) => a.id),
       entityName: entity === "_unknown_" ? null : entity,

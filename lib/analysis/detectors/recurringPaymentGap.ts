@@ -1,4 +1,5 @@
 import { FactRecord, ProposedIssue } from "../types";
+import { calculatePaymentGapImpact, formatImpactRationale } from "../impact";
 
 const GAP_THRESHOLD_DAYS = 45;
 const MIN_PAYMENTS_FOR_PATTERN = 3;
@@ -64,31 +65,15 @@ export function detectRecurringPaymentGap(facts: FactRecord[]): ProposedIssue[] 
 
     if (gaps.length === 0) continue;
 
-    // Calculate impact: months missed * last known amount
+    // Calculate months missed from largest gap
     const lastGap = gaps[gaps.length - 1];
-    const lastPayment = sorted[lastGap.index];
     const monthsMissed = Math.floor(lastGap.gapDays / 30) - 1;
 
-    let impactMin: number | null = null;
-    let impactMax: number | null = null;
-    let currency: string | null = null;
+    // Get payments before the gap for impact calculation
+    const paymentsBeforeGap = sorted.slice(0, lastGap.index + 1);
 
-    // Only calculate impact if amounts are stable (within 10%)
-    const amounts = sorted
-      .slice(0, lastGap.index + 1)
-      .filter((p) => p.amountValue !== null)
-      .map((p) => p.amountValue!);
-
-    if (amounts.length >= 2 && monthsMissed > 0) {
-      const median = amounts.sort((a, b) => a - b)[Math.floor(amounts.length / 2)];
-      const maxDeviation = Math.max(...amounts.map((a) => Math.abs(a - median) / median));
-
-      if (maxDeviation <= 0.1) {
-        impactMin = median * monthsMissed;
-        impactMax = median * monthsMissed;
-        currency = lastPayment.amountCurrency;
-      }
-    }
+    // Calculate impact using strict rules
+    const impact = calculatePaymentGapImpact(paymentsBeforeGap, monthsMissed);
 
     const rationale: string[] = [
       `${sorted.length} monthly payments detected for this entity`,
@@ -99,8 +84,9 @@ export function detectRecurringPaymentGap(facts: FactRecord[]): ProposedIssue[] 
       rationale.push(`Approximately ${monthsMissed} payment(s) may be missing`);
     }
 
-    if (impactMin !== null) {
-      rationale.push(`Estimated missed revenue: ${currency || "USD"} ${impactMin.toFixed(2)}`);
+    const impactRationale = formatImpactRationale(impact);
+    if (impactRationale) {
+      rationale.push(impactRationale);
     }
 
     issues.push({
@@ -108,9 +94,9 @@ export function detectRecurringPaymentGap(facts: FactRecord[]): ProposedIssue[] 
       title: `Recurring payment gap for ${entity === "_unknown_" ? "unknown entity" : entity}`,
       severity: monthsMissed >= 3 ? "high" : monthsMissed >= 2 ? "medium" : "low",
       confidence: Math.min(...sorted.map((p) => p.confidence)),
-      impactMin,
-      impactMax,
-      currency,
+      impactMin: impact.impactMin,
+      impactMax: impact.impactMax,
+      currency: impact.currency,
       rationale,
       evidenceFactIds: sorted.map((p) => p.id),
       entityName: entity === "_unknown_" ? null : entity,
