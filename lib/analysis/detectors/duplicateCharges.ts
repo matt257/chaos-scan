@@ -1,5 +1,6 @@
 import { FactRecord, ProposedIssue } from "../types";
 import { calculateDuplicateImpact, formatImpactRationale } from "../impact";
+import { generateDuplicateSummary } from "../evidenceSummary";
 
 export function detectDuplicateCharges(facts: FactRecord[]): ProposedIssue[] {
   const issues: ProposedIssue[] = [];
@@ -34,6 +35,9 @@ export function detectDuplicateCharges(facts: FactRecord[]): ProposedIssue[] {
     // Calculate impact using strict rules
     const impact = calculateDuplicateImpact(group);
 
+    // Generate evidence summary
+    const { summary: evidenceSummary, stats: evidenceStats } = generateDuplicateSummary(group, date);
+
     const rationale: string[] = [
       `${group.length} payments with identical amount on the same day`,
       `Entity: ${entity === "_unknown_" ? "Unknown" : entity}`,
@@ -64,6 +68,8 @@ export function detectDuplicateCharges(facts: FactRecord[]): ProposedIssue[] {
       rationale,
       evidenceFactIds: group.map((p) => p.id),
       entityName: entity === "_unknown_" ? null : entity,
+      evidenceSummary,
+      evidenceStats,
     });
   }
 

@@ -1,5 +1,6 @@
 import { FactRecord, ProposedIssue } from "../types";
 import { calculateUnpaidInvoiceImpact, formatImpactRationale } from "../impact";
+import { generateUnpaidInvoiceSummary } from "../evidenceSummary";
 
 const DEFAULT_AGING_DAYS = 45;
 
@@ -55,6 +56,9 @@ export function detectUnpaidInvoiceAging(
       ...aged.map((inv) => daysBetween(inv.dateValue!, today))
     );
 
+    // Generate evidence summary
+    const { summary: evidenceSummary, stats: evidenceStats } = generateUnpaidInvoiceSummary(aged, oldestDays);
+
     const rationale: string[] = [
       `${aged.length} unpaid invoice(s) older than ${agingDays} days`,
       `Oldest invoice is ${oldestDays} days past ${aged[0].dateType === "due" ? "due date" : "issue date"}`,
@@ -76,6 +80,8 @@ export function detectUnpaidInvoiceAging(
       rationale,
       evidenceFactIds: aged.map((a) => a.id),
       entityName: entity === "_unknown_" ? null : entity,
+      evidenceSummary,
+      evidenceStats,
     });
   }
 

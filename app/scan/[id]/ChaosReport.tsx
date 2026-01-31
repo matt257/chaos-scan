@@ -21,6 +21,20 @@ interface Evidence {
   fact: Fact;
 }
 
+interface EvidenceStats {
+  count: number;
+  dateRange: { start: string; end: string } | null;
+  medianAmount: number | null;
+  currency: string | null;
+  sourceReferences: string[];
+}
+
+interface RationaleJson {
+  rationale?: string[];
+  evidenceSummary?: string;
+  evidenceStats?: EvidenceStats;
+}
+
 interface Issue {
   id: string;
   issueType: string;
@@ -71,11 +85,33 @@ function getSeverityClass(severity: string): string {
   }
 }
 
+function parseRationaleJson(json: unknown): { rationale: string[]; evidenceSummary: string | null; evidenceStats: EvidenceStats | null } {
+  // Handle legacy format (array of strings)
+  if (Array.isArray(json)) {
+    return { rationale: json as string[], evidenceSummary: null, evidenceStats: null };
+  }
+
+  // Handle new format (object with rationale, evidenceSummary, evidenceStats)
+  if (json && typeof json === "object") {
+    const obj = json as RationaleJson;
+    return {
+      rationale: obj.rationale || [],
+      evidenceSummary: obj.evidenceSummary || null,
+      evidenceStats: obj.evidenceStats || null,
+    };
+  }
+
+  return { rationale: [], evidenceSummary: null, evidenceStats: null };
+}
+
 function IssueCard({ issue }: { issue: Issue }) {
   const [expanded, setExpanded] = useState(false);
-  const rationale = Array.isArray(issue.rationaleJson)
-    ? (issue.rationaleJson as string[])
-    : [];
+  const { rationale, evidenceSummary, evidenceStats } = parseRationaleJson(issue.rationaleJson);
+
+  // Get source references from evidenceStats or from evidence facts
+  const sourceReferences = evidenceStats?.sourceReferences ||
+    issue.evidence.map((e) => e.fact.sourceReference);
+  const uniqueSources = [...new Set(sourceReferences)];
 
   const impactDisplay =
     issue.impactMin !== null
@@ -102,6 +138,21 @@ function IssueCard({ issue }: { issue: Issue }) {
 
       {expanded && (
         <div className="issue-details">
+          {/* Evidence Summary - shown prominently above rationale */}
+          {evidenceSummary && (
+            <div className="evidence-summary">
+              <strong>Evidence summary:</strong> {evidenceSummary}
+            </div>
+          )}
+
+          {/* Source References - shown prominently */}
+          {uniqueSources.length > 0 && (
+            <div className="source-references">
+              <strong>Sources:</strong>{" "}
+              <span className="source-list">{uniqueSources.join(", ")}</span>
+            </div>
+          )}
+
           <div className="rationale-section">
             <strong>Why this was flagged:</strong>
             <ul>

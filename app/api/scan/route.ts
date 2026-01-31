@@ -148,6 +148,14 @@ export async function POST(request: NextRequest) {
 
     // Save issues and evidence
     for (const issue of analysisResult.issues) {
+      // Build rationaleJson with evidence summary and stats
+      // Use JSON.parse/stringify to ensure it's a plain JSON object for Prisma
+      const rationaleJson = JSON.parse(JSON.stringify({
+        rationale: issue.rationale,
+        evidenceSummary: issue.evidenceSummary,
+        evidenceStats: issue.evidenceStats,
+      }));
+
       const savedIssue = await prisma.issue.create({
         data: {
           scanId: scan.id,
@@ -158,7 +166,7 @@ export async function POST(request: NextRequest) {
           impactMin: issue.impactMin,
           impactMax: issue.impactMax,
           currency: issue.currency,
-          rationaleJson: issue.rationale,
+          rationaleJson,
           entityName: issue.entityName,
         },
       });

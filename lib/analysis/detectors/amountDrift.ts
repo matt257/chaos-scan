@@ -1,5 +1,6 @@
 import { FactRecord, ProposedIssue } from "../types";
 import { calculateDriftImpact, formatImpactRationale } from "../impact";
+import { generateAmountDriftSummary } from "../evidenceSummary";
 
 const MIN_OCCURRENCES = 4;
 const DRIFT_THRESHOLD = 0.2; // 20%
@@ -77,11 +78,20 @@ export function detectAmountDrift(facts: FactRecord[]): ProposedIssue[] {
     // Calculate impact using strict rules
     const impact = calculateDriftImpact(sorted, priorMedian, recentAvg);
 
+    // Generate evidence summary
+    const driftPercent = drift * 100;
+    const { summary: evidenceSummary, stats: evidenceStats } = generateAmountDriftSummary(
+      sorted,
+      priorMedian,
+      recentAvg,
+      driftPercent
+    );
+
     const rationale: string[] = [
       `${sorted.length} monthly payments analyzed`,
       `Prior stable amount: ${priorMedian.toFixed(2)}/month`,
       `Recent average: ${recentAvg.toFixed(2)}/month`,
-      `Decrease of ${(drift * 100).toFixed(1)}% detected`,
+      `Decrease of ${driftPercent.toFixed(1)}% detected`,
     ];
 
     const impactRationale = formatImpactRationale(impact);
@@ -100,6 +110,8 @@ export function detectAmountDrift(facts: FactRecord[]): ProposedIssue[] {
       rationale,
       evidenceFactIds: sorted.map((p) => p.id),
       entityName: entity === "_unknown_" ? null : entity,
+      evidenceSummary,
+      evidenceStats,
     });
   }
 

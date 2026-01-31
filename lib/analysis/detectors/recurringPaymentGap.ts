@@ -1,5 +1,6 @@
 import { FactRecord, ProposedIssue } from "../types";
 import { calculatePaymentGapImpact, formatImpactRationale } from "../impact";
+import { generatePaymentGapSummary } from "../evidenceSummary";
 
 const GAP_THRESHOLD_DAYS = 45;
 const MIN_PAYMENTS_FOR_PATTERN = 3;
@@ -75,6 +76,13 @@ export function detectRecurringPaymentGap(facts: FactRecord[]): ProposedIssue[] 
     // Calculate impact using strict rules
     const impact = calculatePaymentGapImpact(paymentsBeforeGap, monthsMissed);
 
+    // Generate evidence summary
+    const { summary: evidenceSummary, stats: evidenceStats } = generatePaymentGapSummary(
+      sorted,
+      lastGap.gapDays,
+      lastGap.afterDate
+    );
+
     const rationale: string[] = [
       `${sorted.length} monthly payments detected for this entity`,
       `Gap of ${lastGap.gapDays} days after ${lastGap.afterDate} (expected ~30 days)`,
@@ -100,6 +108,8 @@ export function detectRecurringPaymentGap(facts: FactRecord[]): ProposedIssue[] 
       rationale,
       evidenceFactIds: sorted.map((p) => p.id),
       entityName: entity === "_unknown_" ? null : entity,
+      evidenceSummary,
+      evidenceStats,
     });
   }
 

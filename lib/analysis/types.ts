@@ -6,6 +6,14 @@ export type IssueType =
   | "amount_drift"
   | "duplicate_charge";
 
+export interface EvidenceStats {
+  count: number;
+  dateRange: { start: string; end: string } | null;
+  medianAmount: number | null;
+  currency: string | null;
+  sourceReferences: string[];
+}
+
 export interface ProposedIssue {
   issueType: IssueType;
   title: string;
@@ -17,6 +25,8 @@ export interface ProposedIssue {
   rationale: string[];
   evidenceFactIds: string[];
   entityName: string | null;
+  evidenceSummary: string | null;
+  evidenceStats: EvidenceStats | null;
 }
 
 export interface FactRecord {
