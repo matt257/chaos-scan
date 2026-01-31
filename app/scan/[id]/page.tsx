@@ -72,9 +72,20 @@ export default async function ScanPage({ params }: PageProps) {
 
   return (
     <div className="container">
-      <Link href="/" className="back-link">
-        &larr; New Scan
-      </Link>
+      <div className="top-nav">
+        <Link href="/" className="back-link">
+          &larr; New Scan
+        </Link>
+        {scan.status === "completed" && (
+          <a
+            href={`/api/scan/${scan.id}/report.pdf`}
+            className="download-pdf-btn"
+            download
+          >
+            Download PDF
+          </a>
+        )}
+      </div>
 
       <h1>Revenue & Billing Chaos Scan</h1>
 

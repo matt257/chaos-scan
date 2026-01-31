@@ -263,15 +263,44 @@ tr:hover {
   }
 }
 
+.top-nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
 .back-link {
   display: inline-block;
   color: #0066cc;
   text-decoration: none;
-  margin-bottom: 1rem;
 }
 
 .back-link:hover {
   text-decoration: underline;
+}
+
+.download-pdf-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: #0066cc;
+  color: white;
+  text-decoration: none;
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition: background 0.2s;
+}
+
+.download-pdf-btn:hover {
+  background: #0052a3;
+}
+
+.download-pdf-btn::before {
+  content: "\2193";
+  font-weight: bold;
 }
 
 .empty-state {
