@@ -9,10 +9,33 @@ export default function Home() {
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [useDemo, setUseDemo] = useState(false);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
+
+    // Demo mode - bypass file/text requirement
+    if (useDemo) {
+      setLoading(true);
+      try {
+        const response = await fetch("/api/scan/demo", {
+          method: "POST",
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || "Failed to create demo scan");
+        }
+
+        router.push(`/scan/${data.scanId}`);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "An error occurred");
+        setLoading(false);
+      }
+      return;
+    }
 
     if (!file && !text.trim()) {
       setError("Please upload a CSV file or paste text (at least one is required)");
@@ -57,34 +80,60 @@ export default function Home() {
         <form onSubmit={handleSubmit}>
           {error && <div className="error">{error}</div>}
 
-          <div className="form-group">
-            <label htmlFor="file">Upload CSV File</label>
-            <input
-              type="file"
-              id="file"
-              accept=".csv,text/csv"
-              onChange={(e) => setFile(e.target.files?.[0] || null)}
-              disabled={loading}
-            />
+          {/* Demo Mode Toggle */}
+          <div className="demo-toggle">
+            <label className="demo-toggle-label">
+              <input
+                type="checkbox"
+                checked={useDemo}
+                onChange={(e) => setUseDemo(e.target.checked)}
+                disabled={loading}
+              />
+              <span className="demo-toggle-text">
+                Use demo dataset
+                <span className="demo-badge">Try it out</span>
+              </span>
+            </label>
+            {useDemo && (
+              <p className="demo-description">
+                Load a sample dataset from &ldquo;Spark Creative Agency&rdquo; with realistic issues:
+                aging invoices, payment gaps, amount drift, and potential duplicates.
+              </p>
+            )}
           </div>
 
-          <div className="divider">
-            <span>AND / OR</span>
-          </div>
+          {!useDemo && (
+            <>
+              <div className="form-group">
+                <label htmlFor="file">Upload CSV File</label>
+                <input
+                  type="file"
+                  id="file"
+                  accept=".csv,text/csv"
+                  onChange={(e) => setFile(e.target.files?.[0] || null)}
+                  disabled={loading}
+                />
+              </div>
 
-          <div className="form-group">
-            <label htmlFor="text">Paste Text</label>
-            <textarea
-              id="text"
-              placeholder="Paste your financial data here (invoices, payments, subscriptions, etc.)"
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              disabled={loading}
-            />
-          </div>
+              <div className="divider">
+                <span>AND / OR</span>
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="text">Paste Text</label>
+                <textarea
+                  id="text"
+                  placeholder="Paste your financial data here (invoices, payments, subscriptions, etc.)"
+                  value={text}
+                  onChange={(e) => setText(e.target.value)}
+                  disabled={loading}
+                />
+              </div>
+            </>
+          )}
 
           <button type="submit" disabled={loading}>
-            {loading ? "Processing..." : "Extract Facts"}
+            {loading ? "Processing..." : useDemo ? "Run Demo Scan" : "Extract Facts"}
           </button>
         </form>
       </div>
