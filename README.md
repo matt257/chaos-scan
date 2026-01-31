@@ -90,6 +90,28 @@ Use the example files in the `examples/` directory:
 
 Vercel will automatically run the build and deploy your app.
 
+## Deploy DB Schema
+
+**Important**: Vercel does not run database migrations automatically. After deploying to Vercel with a new Neon database, you must apply the schema manually.
+
+Run from your local machine with `DATABASE_URL` pointing to your production Neon database:
+
+```bash
+# Preferred: apply migrations (tracks history)
+npx prisma migrate deploy
+
+# Fallback: push schema directly (if no migrations exist)
+npx prisma db push
+```
+
+**Production workflow**:
+1. Develop locally with `prisma migrate dev` (creates migration files)
+2. Commit migration files in `prisma/migrations/`
+3. Deploy to Vercel
+4. Run `prisma migrate deploy` locally against production DATABASE_URL
+
+**Why not automatic?** Prisma migrations require a direct database connection. Vercel build runs in an isolated environment without persistent DB access. Running migrations from your local machine (or CI) with the production DATABASE_URL is the standard pattern.
+
 ## Project Structure
 
 ```
