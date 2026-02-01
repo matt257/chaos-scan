@@ -6,6 +6,8 @@ interface Fact {
   id: string;
   factType: string;
   entityName: string | null;
+  entityRaw: string | null;         // Original entity name before normalization
+  entityCanonical: string | null;   // Normalized entity name for grouping
   amountValue: number | null;
   amountCurrency: string | null;
   dateValue: string | null;
@@ -19,6 +21,31 @@ interface Fact {
   // Bank transaction specific fields
   direction: string;
   clearingStatus: string;
+}
+
+/**
+ * Get the display name for an entity
+ * Uses canonical name (title-cased) for bank transactions, falls back to entityName
+ */
+function getEntityDisplay(fact: Fact): string | null {
+  if (fact.entityCanonical) {
+    // Convert to title case for display
+    return fact.entityCanonical
+      .toLowerCase()
+      .split(" ")
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(" ");
+  }
+  return fact.entityName;
+}
+
+/**
+ * Check if we should show the raw entity name (different from canonical)
+ */
+function shouldShowRawEntity(fact: Fact): boolean {
+  if (!fact.entityRaw || !fact.entityCanonical) return false;
+  // Show raw if it's meaningfully different from canonical
+  return fact.entityRaw.toUpperCase() !== fact.entityCanonical;
 }
 
 interface FactsTableProps {
@@ -66,9 +93,13 @@ export function FactsTable({ facts }: FactsTableProps) {
   const [confidenceThreshold, setConfidenceThreshold] = useState<number>(0.6);
   const [groupByEntity, setGroupByEntity] = useState<boolean>(false);
 
-  // Get unique values for filters
+  // Get unique values for filters (prefer canonical names for bank transactions)
   const entities = useMemo(() => {
-    const set = new Set(facts.map((f) => f.entityName).filter(Boolean) as string[]);
+    const set = new Set(
+      facts
+        .map((f) => f.entityCanonical || f.entityName)
+        .filter(Boolean) as string[]
+    );
     return Array.from(set).sort();
   }, [facts]);
 
@@ -82,10 +113,11 @@ export function FactsTable({ facts }: FactsTableProps) {
     return Array.from(set).sort();
   }, [facts]);
 
-  // Apply filters
+  // Apply filters (use canonical entity for matching)
   const filteredFacts = useMemo(() => {
     return facts.filter((fact) => {
-      if (entityFilter !== "all" && fact.entityName !== entityFilter) return false;
+      const entityKey = fact.entityCanonical || fact.entityName;
+      if (entityFilter !== "all" && entityKey !== entityFilter) return false;
       if (statusFilter !== "all" && fact.status !== statusFilter) return false;
       if (typeFilter !== "all" && fact.factType !== typeFilter) return false;
       if (fact.confidence < confidenceThreshold) return false;
@@ -93,13 +125,13 @@ export function FactsTable({ facts }: FactsTableProps) {
     });
   }, [facts, entityFilter, statusFilter, typeFilter, confidenceThreshold]);
 
-  // Group by entity if enabled
+  // Group by entity if enabled (uses canonical entity for grouping)
   const groupedFacts = useMemo(() => {
     if (!groupByEntity) return null;
 
     const groups = new Map<string, Fact[]>();
     for (const fact of filteredFacts) {
-      const key = fact.entityName || "(No Entity)";
+      const key = fact.entityCanonical || fact.entityName || "(No Entity)";
       if (!groups.has(key)) {
         groups.set(key, []);
       }
@@ -115,13 +147,26 @@ export function FactsTable({ facts }: FactsTableProps) {
   const renderFactRow = (fact: Fact) => {
     const clearingLabel = getClearingStatusLabel(fact.clearingStatus);
     const showBankInfo = isBankTransaction(fact);
+    const displayEntity = getEntityDisplay(fact);
+    const showRaw = shouldShowRawEntity(fact);
 
     return (
       <tr key={fact.id}>
         <td>
           <span className="type-badge">{fact.factType}</span>
         </td>
-        <td>{fact.entityName || "-"}</td>
+        <td>
+          {displayEntity ? (
+            <span title={showRaw ? `Original: ${fact.entityRaw}` : undefined}>
+              {displayEntity}
+              {showRaw && (
+                <span className="entity-raw-hint"> *</span>
+              )}
+            </span>
+          ) : (
+            "-"
+          )}
+        </td>
         <td>
           <span className={getDirectionClass(fact.direction)}>
             {formatAmount(fact.amountValue, fact.amountCurrency, showBankInfo ? fact.direction : undefined)}

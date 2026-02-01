@@ -17,11 +17,13 @@ function monthDate(year: number, month: number, day: number = 15): string {
   return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
-// Helper to add default bank fields to fact arrays
-type FactWithoutBankFields = Omit<FactRecord, "direction" | "clearingStatus">;
-function f(facts: FactWithoutBankFields[]): FactRecord[] {
+// Helper to add default bank/entity fields to fact arrays
+type FactWithoutExtraFields = Omit<FactRecord, "direction" | "clearingStatus" | "entityRaw" | "entityCanonical">;
+function f(facts: FactWithoutExtraFields[]): FactRecord[] {
   return facts.map((fact) => ({
     ...fact,
+    entityRaw: fact.entityName,
+    entityCanonical: fact.entityName?.toUpperCase() || null,
     direction: "unknown",
     clearingStatus: "unknown",
   }));

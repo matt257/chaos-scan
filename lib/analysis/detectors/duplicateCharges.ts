@@ -17,10 +17,11 @@ export function detectDuplicateCharges(facts: FactRecord[]): ProposedIssue[] {
     return [];
   }
 
-  // Group by entity + date + amount
+  // Group by canonical entity + date + amount (uses entityCanonical for better grouping)
   const groups = new Map<string, FactRecord[]>();
   for (const payment of payments) {
-    const key = `${payment.entityName || "_unknown_"}|${payment.dateValue}|${payment.amountValue}`;
+    const entityKey = payment.entityCanonical || payment.entityName || "_unknown_";
+    const key = `${entityKey}|${payment.dateValue}|${payment.amountValue}`;
     if (!groups.has(key)) {
       groups.set(key, []);
     }
@@ -38,9 +39,12 @@ export function detectDuplicateCharges(facts: FactRecord[]): ProposedIssue[] {
     // Generate evidence summary
     const { summary: evidenceSummary, stats: evidenceStats } = generateDuplicateSummary(group, date);
 
+    // Use the original entityName for display (not the canonical key)
+    const displayName = entity === "_unknown_" ? null : (group[0].entityName || entity);
+
     const rationale: string[] = [
       `${group.length} payments with identical amount on the same day`,
-      `Entity: ${entity === "_unknown_" ? "Unknown" : entity}`,
+      `Entity: ${displayName || "Unknown"}`,
       `Date: ${date}`,
     ];
 
@@ -59,7 +63,7 @@ export function detectDuplicateCharges(facts: FactRecord[]): ProposedIssue[] {
 
     issues.push({
       issueType: "duplicate_charge",
-      title: `Possible duplicate charges for ${entity === "_unknown_" ? "unknown entity" : entity}`,
+      title: `Possible duplicate charges for ${displayName || "unknown entity"}`,
       severity: "low", // Always low severity as this needs manual verification
       confidence: Math.min(...group.map((p) => p.confidence)) * 0.8, // Reduce confidence
       impactMin: impact.impactMin,
@@ -67,7 +71,7 @@ export function detectDuplicateCharges(facts: FactRecord[]): ProposedIssue[] {
       currency: impact.currency,
       rationale,
       evidenceFactIds: group.map((p) => p.id),
-      entityName: entity === "_unknown_" ? null : entity,
+      entityName: displayName,
       evidenceSummary,
       evidenceStats,
     });

@@ -33,6 +33,8 @@ export interface FactRecord {
   id: string;
   factType: string;
   entityName: string | null;
+  entityRaw: string | null;         // Original entity name before normalization
+  entityCanonical: string | null;   // Normalized entity name for grouping
   amountValue: number | null;
   amountCurrency: string | null;
   dateValue: string | null;

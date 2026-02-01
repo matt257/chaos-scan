@@ -30,10 +30,10 @@ export function detectRecurringPaymentGap(facts: FactRecord[]): ProposedIssue[] 
     return [];
   }
 
-  // Group by entity
+  // Group by canonical entity (falls back to entityName for non-bank transactions)
   const byEntity = new Map<string, FactRecord[]>();
   for (const payment of monthlyPayments) {
-    const key = payment.entityName || "_unknown_";
+    const key = payment.entityCanonical || payment.entityName || "_unknown_";
     if (!byEntity.has(key)) {
       byEntity.set(key, []);
     }
@@ -83,6 +83,9 @@ export function detectRecurringPaymentGap(facts: FactRecord[]): ProposedIssue[] 
       lastGap.afterDate
     );
 
+    // Use the original entityName for display (not the canonical key)
+    const displayName = entity === "_unknown_" ? null : (sorted[0].entityName || entity);
+
     const rationale: string[] = [
       `${sorted.length} monthly payments detected for this entity`,
       `Gap of ${lastGap.gapDays} days after ${lastGap.afterDate} (expected ~30 days)`,
@@ -99,7 +102,7 @@ export function detectRecurringPaymentGap(facts: FactRecord[]): ProposedIssue[] 
 
     issues.push({
       issueType: "recurring_payment_gap",
-      title: `Recurring payment gap for ${entity === "_unknown_" ? "unknown entity" : entity}`,
+      title: `Recurring payment gap for ${displayName || "unknown entity"}`,
       severity: monthsMissed >= 3 ? "high" : monthsMissed >= 2 ? "medium" : "low",
       confidence: Math.min(...sorted.map((p) => p.confidence)),
       impactMin: impact.impactMin,
@@ -107,7 +110,7 @@ export function detectRecurringPaymentGap(facts: FactRecord[]): ProposedIssue[] 
       currency: impact.currency,
       rationale,
       evidenceFactIds: sorted.map((p) => p.id),
-      entityName: entity === "_unknown_" ? null : entity,
+      entityName: displayName,
       evidenceSummary,
       evidenceStats,
     });

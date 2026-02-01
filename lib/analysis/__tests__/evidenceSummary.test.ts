@@ -13,6 +13,8 @@ function createFact(overrides: Partial<FactRecord> = {}): FactRecord {
     id: "fact1",
     factType: "payment",
     entityName: "Test Entity",
+    entityRaw: "Test Entity",
+    entityCanonical: "TEST ENTITY",
     amountValue: 100,
     amountCurrency: "USD",
     dateValue: "2024-03-15",

@@ -31,10 +31,10 @@ export function detectUnpaidInvoiceAging(
     return [];
   }
 
-  // Group by entity
+  // Group by canonical entity (falls back to entityName for non-bank transactions)
   const byEntity = new Map<string, FactRecord[]>();
   for (const inv of unpaidInvoices) {
-    const key = inv.entityName || "_unknown_";
+    const key = inv.entityCanonical || inv.entityName || "_unknown_";
     if (!byEntity.has(key)) {
       byEntity.set(key, []);
     }
@@ -59,6 +59,9 @@ export function detectUnpaidInvoiceAging(
     // Generate evidence summary
     const { summary: evidenceSummary, stats: evidenceStats } = generateUnpaidInvoiceSummary(aged, oldestDays);
 
+    // Use the original entityName for display (not the canonical key)
+    const displayName = entity === "_unknown_" ? null : (aged[0].entityName || entity);
+
     const rationale: string[] = [
       `${aged.length} unpaid invoice(s) older than ${agingDays} days`,
       `Oldest invoice is ${oldestDays} days past ${aged[0].dateType === "due" ? "due date" : "issue date"}`,
@@ -71,7 +74,7 @@ export function detectUnpaidInvoiceAging(
 
     issues.push({
       issueType: "unpaid_invoice_aging",
-      title: `Aging unpaid invoices for ${entity === "_unknown_" ? "unknown entity" : entity}`,
+      title: `Aging unpaid invoices for ${displayName || "unknown entity"}`,
       severity: oldestDays > 90 ? "high" : oldestDays > 60 ? "medium" : "low",
       confidence: Math.min(...aged.map((a) => a.confidence)),
       impactMin: impact.impactMin,
@@ -79,7 +82,7 @@ export function detectUnpaidInvoiceAging(
       currency: impact.currency,
       rationale,
       evidenceFactIds: aged.map((a) => a.id),
-      entityName: entity === "_unknown_" ? null : entity,
+      entityName: displayName,
       evidenceSummary,
       evidenceStats,
     });

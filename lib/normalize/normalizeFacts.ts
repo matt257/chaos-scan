@@ -114,6 +114,14 @@ export function normalizeFact(fact: Fact): Fact {
       typeof fact.entity_name === "string" && fact.entity_name.trim()
         ? fact.entity_name.trim()
         : null,
+    entity_raw:
+      typeof fact.entity_raw === "string" && fact.entity_raw.trim()
+        ? fact.entity_raw.trim()
+        : null,
+    entity_canonical:
+      typeof fact.entity_canonical === "string" && fact.entity_canonical.trim()
+        ? fact.entity_canonical.trim()
+        : null,
     amount: normalizeAmount(fact.amount),
     date: {
       value: normalizeDate(fact.date?.value),

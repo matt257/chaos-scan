@@ -6,10 +6,13 @@
  */
 
 import { Direction, ClearingStatus } from "../types";
+import { canonicalizeEntity } from "../normalize/canonicalizeEntity";
 
 export interface BankTransaction {
   date: string | null;
   description: string | null;
+  entityRaw: string | null;         // Original description/entity
+  entityCanonical: string | null;   // Normalized entity for grouping
   amount: number | null;
   direction: Direction;
   clearingStatus: ClearingStatus;
@@ -373,10 +376,14 @@ export function normalizeBankCsv(csvText: string): BankCsvResult {
     }
 
     const balanceParsed = parseAmount(balanceText || "");
+    const entityRaw = descText?.trim() || null;
+    const entityCanonical = canonicalizeEntity(entityRaw);
 
     transactions.push({
       date: parseDate(dateText),
       description: descText?.trim() || null,
+      entityRaw,
+      entityCanonical,
       amount,
       direction,
       clearingStatus: parseClearingStatus(statusText),

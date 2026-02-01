@@ -42,6 +42,8 @@ model Fact {
   factId          String  @map("factId")
   factType        String  @map("factType")
   entityName      String? @map("entityName")
+  entityRaw       String? @map("entityRaw")       // Original entity name before normalization
+  entityCanonical String? @map("entityCanonical") // Normalized/canonical entity name for grouping
   amountValue     Float?  @map("amountValue")
   amountCurrency  String? @map("amountCurrency")
   dateValue       String? @map("dateValue")

@@ -34,10 +34,10 @@ export function detectAmountDrift(facts: FactRecord[]): ProposedIssue[] {
     return [];
   }
 
-  // Group by entity
+  // Group by canonical entity (falls back to entityName for non-bank transactions)
   const byEntity = new Map<string, FactRecord[]>();
   for (const payment of monthlyPayments) {
-    const key = payment.entityName || "_unknown_";
+    const key = payment.entityCanonical || payment.entityName || "_unknown_";
     if (!byEntity.has(key)) {
       byEntity.set(key, []);
     }
@@ -87,6 +87,9 @@ export function detectAmountDrift(facts: FactRecord[]): ProposedIssue[] {
       driftPercent
     );
 
+    // Use the original entityName for display (not the canonical key)
+    const displayName = entity === "_unknown_" ? null : (sorted[0].entityName || entity);
+
     const rationale: string[] = [
       `${sorted.length} monthly payments analyzed`,
       `Prior stable amount: ${priorMedian.toFixed(2)}/month`,
@@ -101,7 +104,7 @@ export function detectAmountDrift(facts: FactRecord[]): ProposedIssue[] {
 
     issues.push({
       issueType: "amount_drift",
-      title: `Payment amount decreased for ${entity === "_unknown_" ? "unknown entity" : entity}`,
+      title: `Payment amount decreased for ${displayName || "unknown entity"}`,
       severity: drift >= 0.4 ? "high" : drift >= 0.3 ? "medium" : "low",
       confidence: Math.min(...sorted.map((p) => p.confidence)),
       impactMin: impact.impactMin,
@@ -109,7 +112,7 @@ export function detectAmountDrift(facts: FactRecord[]): ProposedIssue[] {
       currency: impact.currency,
       rationale,
       evidenceFactIds: sorted.map((p) => p.id),
-      entityName: entity === "_unknown_" ? null : entity,
+      entityName: displayName,
       evidenceSummary,
       evidenceStats,
     });

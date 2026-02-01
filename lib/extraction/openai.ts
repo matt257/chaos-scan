@@ -3,6 +3,7 @@ import { ExtractionResult, Fact, SourceType } from "@/lib/types";
 import { EXTRACTION_SYSTEM_PROMPT, EXTRACTION_USER_PROMPT } from "./prompt";
 import { v4 as uuidv4 } from "uuid";
 import { isBankCsv, normalizeBankCsv, BankTransaction } from "../ingestion/bankCsv";
+import { canonicalizeEntity } from "../normalize/canonicalizeEntity";
 
 const MOCK_EXTRACTION: ExtractionResult = {
   facts: [
@@ -10,6 +11,8 @@ const MOCK_EXTRACTION: ExtractionResult = {
       fact_id: "fact_001",
       fact_type: "invoice",
       entity_name: "Acme Corp",
+      entity_raw: "Acme Corp",
+      entity_canonical: "ACME",
       amount: { value: 1500.0, currency: "USD" },
       date: { value: "2024-01-15", date_type: "issued" },
       status: "unpaid",
@@ -26,6 +29,8 @@ const MOCK_EXTRACTION: ExtractionResult = {
       fact_id: "fact_002",
       fact_type: "payment",
       entity_name: "TechStart Inc",
+      entity_raw: "TechStart Inc",
+      entity_canonical: "TECHSTART",
       amount: { value: 2500.0, currency: "USD" },
       date: { value: "2024-01-10", date_type: "paid" },
       status: "paid",
@@ -42,6 +47,8 @@ const MOCK_EXTRACTION: ExtractionResult = {
       fact_id: "fact_003",
       fact_type: "subscription",
       entity_name: "CloudService Pro",
+      entity_raw: "CloudService Pro",
+      entity_canonical: "CLOUDSERVICE PRO",
       amount: { value: 99.99, currency: "USD" },
       date: { value: "2024-02-01", date_type: "started" },
       status: "active",
@@ -66,10 +73,12 @@ function bankTransactionsToFacts(
   transactions: BankTransaction[],
   sourceType: SourceType
 ): Fact[] {
-  return transactions.map((tx, index) => ({
+  return transactions.map((tx) => ({
     fact_id: uuidv4(),
     fact_type: "bank_transaction" as const,
-    entity_name: tx.description,
+    entity_name: tx.entityCanonical || tx.entityRaw, // Use canonical as primary display name
+    entity_raw: tx.entityRaw,
+    entity_canonical: tx.entityCanonical,
     amount: { value: tx.amount, currency: null },
     date: { value: tx.date, date_type: "posted" as const },
     status: tx.clearingStatus === "reversed" ? "failed" as const : "paid" as const,
@@ -140,14 +149,20 @@ export async function extractFacts(
     }
 
     return {
-      facts: parsed.facts.map((f: Fact) => ({
-        ...f,
-        source_type: sourceType,
-        // Ensure new fields have defaults if not provided by AI
-        direction: f.direction || "unknown",
-        clearing_status: f.clearing_status || "unknown",
-        raw_amount_text: f.raw_amount_text || null,
-      })),
+      facts: parsed.facts.map((f: Fact) => {
+        const entityRaw = f.entity_name;
+        const entityCanonical = canonicalizeEntity(entityRaw);
+        return {
+          ...f,
+          source_type: sourceType,
+          entity_raw: entityRaw,
+          entity_canonical: entityCanonical,
+          // Ensure new fields have defaults if not provided by AI
+          direction: f.direction || "unknown",
+          clearing_status: f.clearing_status || "unknown",
+          raw_amount_text: f.raw_amount_text || null,
+        };
+      }),
       warnings: parsed.warnings || [],
       extraction_confidence: parsed.extraction_confidence || "medium",
     };

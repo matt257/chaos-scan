@@ -64,6 +64,8 @@ export async function POST() {
       id: f.id,
       factType: f.factType,
       entityName: f.entityName,
+      entityRaw: f.entityRaw,
+      entityCanonical: f.entityCanonical,
       amountValue: f.amountValue,
       amountCurrency: f.amountCurrency,
       dateValue: f.dateValue,

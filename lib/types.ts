@@ -13,6 +13,8 @@ export type Fact = {
   fact_id: string;
   fact_type: FactType;
   entity_name: string | null;
+  entity_raw: string | null;         // Original entity name before normalization
+  entity_canonical: string | null;   // Normalized entity name for grouping
   amount: { value: number | null; currency: string | null };
   date: { value: string | null; date_type: DateType };
   status: Status;
