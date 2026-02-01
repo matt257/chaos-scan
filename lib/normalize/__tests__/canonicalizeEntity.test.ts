@@ -168,6 +168,33 @@ describe("canonicalizeEntity", () => {
       expect(canonicalizeEntity("CAFÉ COFFEE")).toBe("CAF COFFEE");
     });
   });
+
+  describe("required test cases", () => {
+    it("should normalize DOORDASH with DD prefix and asterisk", () => {
+      // "PURCHASE DD *DOORDASH SHAKESHAC" → removes PURCHASE, DD, and asterisk
+      const result = canonicalizeEntity("PURCHASE DD *DOORDASH SHAKESHAC");
+      expect(result).toBe("DOORDASH SHAKESHAC");
+    });
+
+    it("should handle AMZN MKTPLACE PMTS", () => {
+      // Should keep the main merchant name after removing transaction tokens
+      const result = canonicalizeEntity("AMZN MKTPLACE PMTS");
+      expect(result).toBe("AMZN MKTPLACE PMTS");
+    });
+
+    it("should remove THE prefix from university names", () => {
+      expect(canonicalizeEntity("THE OHIO STATE U")).toBe("OHIO STATE U");
+    });
+
+    it("should handle APPLECARD GSBANK", () => {
+      const result = canonicalizeEntity("APPLECARD GSBANK");
+      expect(result).toBe("APPLECARD GSBANK");
+    });
+
+    it("should remove CARD token and trailing numbers from DISCOVER", () => {
+      expect(canonicalizeEntity("DISCOVER CARD 1234")).toBe("DISCOVER");
+    });
+  });
 });
 
 describe("formatEntityForDisplay", () => {

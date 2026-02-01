@@ -58,8 +58,8 @@ const TRANSACTION_TOKENS = [
   "MASTERCARD",
   "MC",
   "AMEX",
-  "DISCOVER",
   "CHECKCARD",
+  "DD",             // DoorDash prefix
   "RECURRING",
   "AUTOPAY",
   "BILLPAY",
@@ -95,12 +95,13 @@ const TRANSACTION_TOKENS = [
   "ORIGINATOR",
 ];
 
-// Payment services that should only be removed when followed by something else
+// Payment services and card networks that should only be removed when followed by something else
 // (they can be the merchant themselves)
 const PAYMENT_SERVICE_PREFIXES = [
   "PAYPAL",
   "VENMO",
   "ZELLE",
+  "DISCOVER",  // Also a card network, but can be the merchant name
 ];
 
 // Location/branch identifiers that add noise
@@ -189,10 +190,11 @@ export function canonicalizeEntity(raw: string | null): string | null {
   }
   result = result.replace(/\s+/g, " ").trim();
 
-  // Step 6: Remove payment service prefixes only when followed by something else
+  // Step 6: Remove payment service prefixes only when followed by meaningful content
+  // (at least one letter, not just numbers)
   for (const service of PAYMENT_SERVICE_PREFIXES) {
-    // Only remove if there's content after it
-    const prefixRegex = new RegExp(`^${service}\\s+(?=\\S)`, "gi");
+    // Only remove if there's alphabetic content after it
+    const prefixRegex = new RegExp(`^${service}\\s+(?=.*[A-Z])`, "gi");
     result = result.replace(prefixRegex, "");
   }
   result = result.replace(/\s+/g, " ").trim();
