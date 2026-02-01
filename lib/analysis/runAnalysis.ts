@@ -15,6 +15,7 @@ import {
 import { pruneIssues, PruneOptions, BANK_MODE_PRUNE_OPTIONS } from "./pruneIssues";
 import { classifyMonthlyByEntity } from "./recurrence";
 import { detectScanMode, ScanMode } from "./scanMode";
+import { computeBankDiagnostics, BankDiagnostics } from "./diagnostics";
 
 export interface AnalysisOptions {
   prune?: Partial<PruneOptions>;
@@ -24,6 +25,7 @@ export interface AnalysisOptions {
 export interface ExtendedAnalysisResult extends AnalysisResult {
   scanMode: ScanMode;
   bankInsights: BankInsights | null;
+  bankDiagnostics: BankDiagnostics | null;
   pruneStats: {
     totalBeforePrune: number;
     droppedLowEvidence: number;
@@ -50,12 +52,14 @@ export function runAnalysis(
   // This is used by gap/drift detectors when stored recurrence is unknown
   const derivedRecurrence = classifyMonthlyByEntity(facts);
 
-  // Bank insights (only for bank mode)
+  // Bank insights and diagnostics (only for bank mode)
   let bankInsights: BankInsights | null = null;
+  let bankDiagnostics: BankDiagnostics | null = null;
 
   if (scanMode === "bank") {
     // Bank mode: run bank-specific detectors
     bankInsights = generateBankInsights(facts, derivedRecurrence);
+    bankDiagnostics = computeBankDiagnostics(facts, derivedRecurrence);
 
     const newRecurring = detectNewRecurringCharge(facts, { derivedRecurrence });
     rawIssues.push(...newRecurring);
@@ -162,6 +166,7 @@ export function runAnalysis(
     notFlagged,
     scanMode,
     bankInsights,
+    bankDiagnostics,
     pruneStats: {
       totalBeforePrune: pruneResult.totalBeforePrune,
       droppedLowEvidence: pruneResult.droppedLowEvidence,

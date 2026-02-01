@@ -865,3 +865,66 @@ tr:hover {
   color: #4a7ab5;
   text-align: center;
 }
+
+/* Bank Diagnostics Section */
+.diagnostics-section {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  background: #fff8e6;
+  border: 1px solid #ffe0a3;
+  border-radius: 6px;
+  text-align: left;
+}
+
+.diagnostics-section h4 {
+  margin: 0 0 1rem 0;
+  font-size: 0.95rem;
+  color: #8a6d3b;
+}
+
+.diagnostics-stats {
+  display: flex;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.diag-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.diag-value {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #8a6d3b;
+}
+
+.diag-label {
+  font-size: 0.7rem;
+  color: #a08050;
+  text-transform: uppercase;
+}
+
+.top-blockers {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid #ffe0a3;
+}
+
+.top-blockers strong {
+  font-size: 0.85rem;
+  color: #8a6d3b;
+}
+
+.top-blockers ul {
+  margin: 0.5rem 0 0 1.25rem;
+  padding: 0;
+}
+
+.top-blockers li {
+  font-size: 0.85rem;
+  color: #6d5a32;
+  margin-bottom: 0.25rem;
+}

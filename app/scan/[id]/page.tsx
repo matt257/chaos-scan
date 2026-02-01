@@ -104,6 +104,89 @@ function computeBankInsights(facts: FactWithBankFields[]): BankInsights {
   };
 }
 
+interface BankDiagnostics {
+  totalFacts: number;
+  withDateCount: number;
+  missingDateCount: number;
+  dateParseFailureRate: number;
+  qualifyingForAnalysis: number;
+  uniqueMerchants: number;
+  candidateRecurringMerchants: number;
+  topBlockers: string[];
+}
+
+// Compute simplified diagnostics for bank mode (server-side)
+function computeBankDiagnostics(facts: FactWithBankFields[]): BankDiagnostics {
+  const totalFacts = facts.length;
+  const withDateCount = facts.filter(f => f.dateValue !== null).length;
+  const missingDateCount = totalFacts - withDateCount;
+  const dateParseFailureRate = totalFacts > 0 ? missingDateCount / totalFacts : 0;
+
+  const qualifying = facts.filter(
+    f => f.direction === "outflow" &&
+         f.clearingStatus === "cleared" &&
+         f.dateValue !== null &&
+         f.amountValue !== null
+  );
+  const qualifyingForAnalysis = qualifying.length;
+
+  // Unique merchants
+  const merchantSet = new Set<string>();
+  for (const fact of facts) {
+    const key = fact.entityCanonical || fact.entityName || "_unknown_";
+    if (key !== "_unknown_") merchantSet.add(key);
+  }
+  const uniqueMerchants = merchantSet.size;
+
+  // Merchants with 3+ dated outflows
+  const merchantCounts = new Map<string, number>();
+  for (const fact of qualifying) {
+    const key = fact.entityCanonical || fact.entityName || "_unknown_";
+    merchantCounts.set(key, (merchantCounts.get(key) || 0) + 1);
+  }
+  const candidateRecurringMerchants = Array.from(merchantCounts.values())
+    .filter(count => count >= 3).length;
+
+  // Top blockers
+  const topBlockers: string[] = [];
+
+  if (dateParseFailureRate > 0.5) {
+    const pct = Math.round(dateParseFailureRate * 100);
+    topBlockers.push(
+      `${pct}% of transactions are missing a parseable date. Your export may use an unsupported date format.`
+    );
+  }
+
+  if (qualifyingForAnalysis < 10 && totalFacts > 0) {
+    topBlockers.push(
+      `Only ${qualifyingForAnalysis} transactions qualify for analysis (need outflow + cleared + date + amount).`
+    );
+  }
+
+  if (candidateRecurringMerchants === 0 && qualifyingForAnalysis >= 10) {
+    topBlockers.push(
+      `No merchants have 3+ dated outflows needed for recurrence detection.`
+    );
+  }
+
+  if (topBlockers.length === 0 && totalFacts > 0) {
+    topBlockers.push(
+      `Data coverage looks adequate. No issues were detected because all patterns appear normal.`
+    );
+  }
+
+  return {
+    totalFacts,
+    withDateCount,
+    missingDateCount,
+    dateParseFailureRate,
+    qualifyingForAnalysis,
+    uniqueMerchants,
+    candidateRecurringMerchants,
+    topBlockers,
+  };
+}
+
 interface PageProps {
   params: Promise<{ id: string }>;
 }
@@ -178,8 +261,9 @@ export default async function ScanPage({ params }: PageProps) {
     ? "bank" as const
     : "billing" as const;
 
-  // Compute bank insights if in bank mode
+  // Compute bank insights and diagnostics if in bank mode
   const bankInsights = scanMode === "bank" ? computeBankInsights(scan.facts) : null;
+  const bankDiagnostics = scanMode === "bank" ? computeBankDiagnostics(scan.facts) : null;
 
   return (
     <div className="container">
@@ -254,6 +338,7 @@ export default async function ScanPage({ params }: PageProps) {
         facts={scan.facts}
         scanMode={scanMode}
         bankInsights={bankInsights}
+        bankDiagnostics={bankDiagnostics}
       />
 
       <FactsTable facts={scan.facts} />

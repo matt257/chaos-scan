@@ -1,25 +1,34 @@
 /**
- * Conservative Monthly Recurrence Classifier
+ * Tiered Monthly Recurrence Classifier
  *
  * Derives monthly recurrence classification for bank transactions using
- * strict deterministic rules. Prefers false negatives over false positives.
+ * two-tier deterministic rules. Prefers false negatives over false positives.
  *
- * Classification criteria:
- * - Only considers outflow transactions
- * - Only considers cleared transactions (ignores pending/reversed)
- * - Requires amount and date to be present
+ * Tier 1 (strict): High confidence, used for price creep and gap detection
  * - Requires >= 3 occurrences
- * - Requires >= 2 consecutive intervals within 28-33 days
+ * - Requires >= 2 intervals within 28-33 days
  * - Requires amounts within ±10% of median
+ * - Confidence >= 0.85
+ *
+ * Tier 2 (likely): Lower confidence, used for new recurring detection
+ * - Requires >= 4 occurrences (more evidence needed)
+ * - Requires >= 2 intervals within 28-35 days
+ * - Requires amounts within ±20% of median
+ * - Confidence <= 0.75
  */
 
 import { FactRecord } from "../types";
 import {
   RecurrenceClassification,
+  RecurrenceTier,
   MONTHLY_INTERVAL_MIN,
   MONTHLY_INTERVAL_MAX,
+  MONTHLY_INTERVAL_MIN_LOOSE,
+  MONTHLY_INTERVAL_MAX_LOOSE,
   AMOUNT_TOLERANCE,
+  AMOUNT_TOLERANCE_LOOSE,
   MIN_OCCURRENCES,
+  MIN_OCCURRENCES_TIER2,
   MIN_VALID_INTERVALS,
 } from "./types";
 
@@ -74,21 +83,49 @@ function isQualifyingFact(fact: FactRecord): boolean {
 }
 
 /**
+ * Build a "none" tier classification with stats
+ */
+function buildNoneClassification(
+  qualifying: FactRecord[],
+  intervals: number[],
+  medianAmt: number | null
+): RecurrenceClassification {
+  const intervalMean = intervals.length > 0
+    ? intervals.reduce((a, b) => a + b, 0) / intervals.length
+    : 0;
+
+  const validStrict = intervals.filter(
+    i => i >= MONTHLY_INTERVAL_MIN && i <= MONTHLY_INTERVAL_MAX
+  ).length;
+  const validLoose = intervals.filter(
+    i => i >= MONTHLY_INTERVAL_MIN_LOOSE && i <= MONTHLY_INTERVAL_MAX_LOOSE
+  ).length;
+
+  return {
+    isMonthly: false,
+    tier: "none",
+    confidence: 0,
+    evidenceCount: qualifying.length,
+    medianAmount: medianAmt,
+    intervalStats: intervals.length > 0 ? {
+      mean: intervalMean,
+      stdDev: stdDev(intervals, intervalMean),
+      withinRange: validStrict,
+      withinLooseRange: validLoose,
+    } : null,
+  };
+}
+
+/**
  * Classify a single entity's transactions for monthly recurrence
  */
 function classifyEntity(facts: FactRecord[]): RecurrenceClassification {
   // Filter to qualifying facts only
   const qualifying = facts.filter(isQualifyingFact);
 
-  // Need at least MIN_OCCURRENCES
+  // Need at least MIN_OCCURRENCES for any classification
   if (qualifying.length < MIN_OCCURRENCES) {
-    return {
-      isMonthly: false,
-      confidence: 0,
-      evidenceCount: qualifying.length,
-      medianAmount: null,
-      intervalStats: null,
-    };
+    return buildNoneClassification(qualifying, [], null);
   }
 
   // Sort by date
@@ -102,86 +139,104 @@ function classifyEntity(facts: FactRecord[]): RecurrenceClassification {
     intervals.push(daysBetween(sorted[i - 1].dateValue!, sorted[i].dateValue!));
   }
 
-  // Count intervals within monthly range (28-33 days)
-  const validIntervals = intervals.filter(
-    (interval) => interval >= MONTHLY_INTERVAL_MIN && interval <= MONTHLY_INTERVAL_MAX
-  );
-
-  // Need at least MIN_VALID_INTERVALS consecutive monthly intervals
-  if (validIntervals.length < MIN_VALID_INTERVALS) {
-    const intervalMean = intervals.reduce((a, b) => a + b, 0) / intervals.length;
-    return {
-      isMonthly: false,
-      confidence: 0,
-      evidenceCount: qualifying.length,
-      medianAmount: median(qualifying.map((f) => Math.abs(f.amountValue!))),
-      intervalStats: {
-        mean: intervalMean,
-        stdDev: stdDev(intervals, intervalMean),
-        withinRange: validIntervals.length,
-      },
-    };
-  }
-
-  // Check amount stability - all amounts within ±10% of median
+  // Calculate amounts
   const amounts = qualifying.map((f) => Math.abs(f.amountValue!));
   const medianAmount = median(amounts);
 
-  const amountsStable = amounts.every((amount) => {
+  // Count intervals in strict range (28-33 days)
+  const strictIntervals = intervals.filter(
+    i => i >= MONTHLY_INTERVAL_MIN && i <= MONTHLY_INTERVAL_MAX
+  );
+
+  // Count intervals in loose range (28-35 days)
+  const looseIntervals = intervals.filter(
+    i => i >= MONTHLY_INTERVAL_MIN_LOOSE && i <= MONTHLY_INTERVAL_MAX_LOOSE
+  );
+
+  // Check amount stability for strict tier (±10%)
+  const strictAmountStable = amounts.every((amount) => {
+    if (medianAmount === 0) return true;
     const deviation = Math.abs(amount - medianAmount) / medianAmount;
     return deviation <= AMOUNT_TOLERANCE;
   });
 
-  if (!amountsStable) {
-    const intervalMean = intervals.reduce((a, b) => a + b, 0) / intervals.length;
+  // Check amount stability for loose tier (±20%)
+  const looseAmountStable = amounts.every((amount) => {
+    if (medianAmount === 0) return true;
+    const deviation = Math.abs(amount - medianAmount) / medianAmount;
+    return deviation <= AMOUNT_TOLERANCE_LOOSE;
+  });
+
+  const intervalMean = intervals.reduce((a, b) => a + b, 0) / intervals.length;
+  const intervalStdDev = stdDev(intervals, intervalMean);
+
+  // Try Tier 1 (strict) classification
+  if (strictIntervals.length >= MIN_VALID_INTERVALS && strictAmountStable) {
+    // Calculate strict confidence
+    const intervalConsistency = strictIntervals.length / intervals.length;
+    const amountDeviations = amounts.map((a) =>
+      medianAmount > 0 ? Math.abs(a - medianAmount) / medianAmount : 0
+    );
+    const avgAmountDeviation = amountDeviations.reduce((a, b) => a + b, 0) / amountDeviations.length;
+    const amountConsistency = 1 - avgAmountDeviation / AMOUNT_TOLERANCE;
+    const evidenceBoost = Math.min(qualifying.length / 6, 1);
+
+    // Strict tier confidence: minimum 0.85
+    const rawConfidence = intervalConsistency * 0.5 + amountConsistency * 0.3 + evidenceBoost * 0.2;
+    const confidence = Math.max(0.85, Math.min(1, rawConfidence));
+
     return {
-      isMonthly: false,
-      confidence: 0,
+      isMonthly: true,
+      tier: "strict",
+      confidence,
       evidenceCount: qualifying.length,
       medianAmount,
       intervalStats: {
         mean: intervalMean,
-        stdDev: stdDev(intervals, intervalMean),
-        withinRange: validIntervals.length,
+        stdDev: intervalStdDev,
+        withinRange: strictIntervals.length,
+        withinLooseRange: looseIntervals.length,
       },
     };
   }
 
-  // Calculate confidence based on:
-  // - Proportion of intervals within range
-  // - Amount stability
-  // - Number of occurrences
-  const intervalMean = intervals.reduce((a, b) => a + b, 0) / intervals.length;
-  const intervalStdDev = stdDev(intervals, intervalMean);
+  // Try Tier 2 (likely) classification
+  // Requires more evidence (4+ occurrences) to compensate for looser rules
+  if (
+    qualifying.length >= MIN_OCCURRENCES_TIER2 &&
+    looseIntervals.length >= MIN_VALID_INTERVALS &&
+    looseAmountStable
+  ) {
+    // Calculate loose confidence (capped at 0.75)
+    const intervalConsistency = looseIntervals.length / intervals.length;
+    const amountDeviations = amounts.map((a) =>
+      medianAmount > 0 ? Math.abs(a - medianAmount) / medianAmount : 0
+    );
+    const avgAmountDeviation = amountDeviations.reduce((a, b) => a + b, 0) / amountDeviations.length;
+    const amountConsistency = 1 - avgAmountDeviation / AMOUNT_TOLERANCE_LOOSE;
+    const evidenceBoost = Math.min((qualifying.length - 3) / 5, 1); // Starts counting from 4
 
-  // Interval consistency (how many intervals are within range)
-  const intervalConsistency = validIntervals.length / intervals.length;
+    // Likely tier confidence: maximum 0.75
+    const rawConfidence = intervalConsistency * 0.4 + amountConsistency * 0.3 + evidenceBoost * 0.3;
+    const confidence = Math.min(0.75, Math.max(0.5, rawConfidence));
 
-  // Amount consistency (how tight are the amounts around median)
-  const amountDeviations = amounts.map((a) => Math.abs(a - medianAmount) / medianAmount);
-  const avgAmountDeviation = amountDeviations.reduce((a, b) => a + b, 0) / amountDeviations.length;
-  const amountConsistency = 1 - avgAmountDeviation / AMOUNT_TOLERANCE;
+    return {
+      isMonthly: true,
+      tier: "likely",
+      confidence,
+      evidenceCount: qualifying.length,
+      medianAmount,
+      intervalStats: {
+        mean: intervalMean,
+        stdDev: intervalStdDev,
+        withinRange: strictIntervals.length,
+        withinLooseRange: looseIntervals.length,
+      },
+    };
+  }
 
-  // Evidence boost (more occurrences = higher confidence, capped)
-  const evidenceBoost = Math.min(qualifying.length / 6, 1); // Max boost at 6+ occurrences
-
-  // Combined confidence (weighted average)
-  const confidence = Math.min(
-    1,
-    intervalConsistency * 0.5 + amountConsistency * 0.3 + evidenceBoost * 0.2
-  );
-
-  return {
-    isMonthly: true,
-    confidence,
-    evidenceCount: qualifying.length,
-    medianAmount,
-    intervalStats: {
-      mean: intervalMean,
-      stdDev: intervalStdDev,
-      withinRange: validIntervals.length,
-    },
-  };
+  // No classification
+  return buildNoneClassification(qualifying, intervals, medianAmount);
 }
 
 /**
@@ -217,9 +272,7 @@ export function classifyMonthlyByEntity(
 }
 
 /**
- * Check if a specific entity is classified as monthly recurring.
- *
- * Helper function for detectors to quickly check classification.
+ * Check if a specific entity is classified as monthly recurring (any tier).
  */
 export function isEntityMonthly(
   entityKey: string,
@@ -230,9 +283,20 @@ export function isEntityMonthly(
 }
 
 /**
+ * Check if a specific entity has strict monthly classification (Tier 1).
+ */
+export function isEntityStrictMonthly(
+  entityKey: string,
+  classifications: Map<string, RecurrenceClassification>
+): boolean {
+  const classification = classifications.get(entityKey);
+  return classification?.tier === "strict";
+}
+
+/**
  * Get derived recurrence for a fact based on entity classification.
  *
- * Returns "monthly" if the entity is classified as monthly,
+ * Returns "monthly" if the entity is classified as monthly (any tier),
  * otherwise returns the fact's stored recurrence.
  */
 export function getDerivedRecurrence(

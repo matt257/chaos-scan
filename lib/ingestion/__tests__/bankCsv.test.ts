@@ -107,6 +107,35 @@ describe("parseDate", () => {
     expect(parseDate(null)).toBe(null);
     expect(parseDate("   ")).toBe(null);
   });
+
+  // New date format tests
+  it("should parse text format dates (Jan 2, 2025)", () => {
+    expect(parseDate("Jan 2, 2025")).toBe("2025-01-02");
+    expect(parseDate("January 15, 2024")).toBe("2024-01-15");
+    expect(parseDate("Dec 31, 2024")).toBe("2024-12-31");
+  });
+
+  it("should parse text format dates (2-Jan-2025)", () => {
+    expect(parseDate("02-Jan-2025")).toBe("2025-01-02");
+    expect(parseDate("15-January-2024")).toBe("2024-01-15");
+    expect(parseDate("31 Dec 2024")).toBe("2024-12-31");
+  });
+
+  it("should parse dates with time components", () => {
+    expect(parseDate("2024-01-15 10:30:00")).toBe("2024-01-15");
+    expect(parseDate("01/15/2024 10:30 AM")).toBe("2024-01-15");
+    expect(parseDate("2024-01-15T14:30:00Z")).toBe("2024-01-15");
+  });
+
+  it("should parse 2-digit year dates", () => {
+    expect(parseDate("01/15/24")).toBe("2024-01-15");
+    expect(parseDate("12/31/99")).toBe("1999-12-31");
+  });
+
+  it("should handle various separator formats", () => {
+    expect(parseDate("2024/01/15")).toBe("2024-01-15");
+    expect(parseDate("01-15-2024")).toBe("2024-01-15");
+  });
 });
 
 describe("normalizeBankCsv", () => {

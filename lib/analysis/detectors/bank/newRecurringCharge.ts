@@ -114,10 +114,15 @@ export function detectNewRecurringCharge(
     // Build display name from first occurrence
     const displayName = sorted[0].entityName || entityKey;
 
+    // Note the classification tier in rationale
+    const tierNote = classification.tier === "strict"
+      ? "Monthly cadence derived from transaction pattern (strict match)"
+      : "Monthly cadence derived from transaction pattern (likely match, looser criteria)";
+
     const rationale: string[] = [
       `New monthly recurring charge started ${daysSinceFirst} days ago`,
       `${classification.evidenceCount} occurrences detected with consistent ~30-day intervals`,
-      "Monthly cadence derived from transaction pattern",
+      tierNote,
     ];
 
     if (medianAmount !== null && currency) {

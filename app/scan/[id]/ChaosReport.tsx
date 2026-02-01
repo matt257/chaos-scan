@@ -36,6 +36,17 @@ interface BankInsights {
   dateRange: { start: string; end: string } | null;
 }
 
+interface BankDiagnostics {
+  totalFacts: number;
+  withDateCount: number;
+  missingDateCount: number;
+  dateParseFailureRate: number;
+  qualifyingForAnalysis: number;
+  uniqueMerchants: number;
+  candidateRecurringMerchants: number;
+  topBlockers: string[];
+}
+
 interface Evidence {
   id: string;
   fact: Fact;
@@ -75,6 +86,7 @@ interface ChaosReportProps {
   facts: Fact[];
   scanMode?: ScanMode;
   bankInsights?: BankInsights | null;
+  bankDiagnostics?: BankDiagnostics | null;
 }
 
 const NOT_FLAGGED_DEFAULTS = [
@@ -239,7 +251,7 @@ function IssueCard({ issue }: { issue: Issue }) {
   );
 }
 
-export function ChaosReport({ issues, executiveSummary, facts, scanMode, bankInsights }: ChaosReportProps) {
+export function ChaosReport({ issues, executiveSummary, facts, scanMode, bankInsights, bankDiagnostics }: ChaosReportProps) {
   const highCount = issues.filter((i) => i.severity === "high").length;
   const mediumCount = issues.filter((i) => i.severity === "medium").length;
   const lowCount = issues.filter((i) => i.severity === "low").length;
@@ -382,6 +394,41 @@ export function ChaosReport({ issues, executiveSummary, facts, scanMode, bankIns
             <p className="hint">
               This does not guarantee absence of issues—only that none met the detection thresholds.
             </p>
+
+            {/* Bank Diagnostics - shown when no issues found in bank mode */}
+            {isBankMode && bankDiagnostics && (
+              <div className="diagnostics-section">
+                <h4>Why no issues?</h4>
+                <div className="diagnostics-stats">
+                  <div className="diag-stat">
+                    <span className="diag-value">{bankDiagnostics.totalFacts}</span>
+                    <span className="diag-label">Total Transactions</span>
+                  </div>
+                  <div className="diag-stat">
+                    <span className="diag-value">{bankDiagnostics.withDateCount}</span>
+                    <span className="diag-label">With Parseable Date</span>
+                  </div>
+                  <div className="diag-stat">
+                    <span className="diag-value">{bankDiagnostics.qualifyingForAnalysis}</span>
+                    <span className="diag-label">Qualifying for Analysis</span>
+                  </div>
+                  <div className="diag-stat">
+                    <span className="diag-value">{bankDiagnostics.candidateRecurringMerchants}</span>
+                    <span className="diag-label">Recurrence Candidates</span>
+                  </div>
+                </div>
+                {bankDiagnostics.topBlockers.length > 0 && (
+                  <div className="top-blockers">
+                    <strong>Top blockers:</strong>
+                    <ul>
+                      {bankDiagnostics.topBlockers.map((blocker, i) => (
+                        <li key={i}>{blocker}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         ) : (
           <div className="issues-list">

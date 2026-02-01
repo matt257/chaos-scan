@@ -336,3 +336,101 @@ describe("isEntityMonthly", () => {
     expect(isEntityMonthly("UNKNOWN ENTITY", classifications)).toBe(false);
   });
 });
+
+describe("tiered classification", () => {
+  it("should classify as strict tier with tight intervals and amounts", () => {
+    const baseDate = "2024-01-15";
+    const facts: FactRecord[] = [
+      createFact({ id: "1", dateValue: baseDate, amountValue: 100 }),
+      createFact({ id: "2", dateValue: daysFrom(baseDate, 30), amountValue: 100 }),
+      createFact({ id: "3", dateValue: daysFrom(baseDate, 60), amountValue: 100 }),
+    ];
+
+    const result = classifyMonthlyByEntity(facts);
+    const classification = result.get("TEST ENTITY");
+
+    expect(classification?.isMonthly).toBe(true);
+    expect(classification?.tier).toBe("strict");
+    expect(classification?.confidence).toBeGreaterThanOrEqual(0.85);
+  });
+
+  it("should classify as likely tier with looser intervals (28-35 days)", () => {
+    const baseDate = "2024-01-15";
+    const facts: FactRecord[] = [
+      createFact({ id: "1", dateValue: baseDate, amountValue: 100 }),
+      createFact({ id: "2", dateValue: daysFrom(baseDate, 34), amountValue: 100 }), // 34 days
+      createFact({ id: "3", dateValue: daysFrom(baseDate, 68), amountValue: 100 }), // 34 days
+      createFact({ id: "4", dateValue: daysFrom(baseDate, 102), amountValue: 100 }), // Need 4 for likely
+    ];
+
+    const result = classifyMonthlyByEntity(facts);
+    const classification = result.get("TEST ENTITY");
+
+    expect(classification?.isMonthly).toBe(true);
+    expect(classification?.tier).toBe("likely");
+    expect(classification?.confidence).toBeLessThanOrEqual(0.75);
+  });
+
+  it("should classify as likely tier with looser amounts (within 20%)", () => {
+    const baseDate = "2024-01-15";
+    const facts: FactRecord[] = [
+      createFact({ id: "1", dateValue: baseDate, amountValue: 100 }),
+      createFact({ id: "2", dateValue: daysFrom(baseDate, 30), amountValue: 115 }), // 15% higher
+      createFact({ id: "3", dateValue: daysFrom(baseDate, 60), amountValue: 85 }),  // 15% lower
+      createFact({ id: "4", dateValue: daysFrom(baseDate, 90), amountValue: 100 }),
+    ];
+
+    const result = classifyMonthlyByEntity(facts);
+    const classification = result.get("TEST ENTITY");
+
+    expect(classification?.isMonthly).toBe(true);
+    expect(classification?.tier).toBe("likely");
+  });
+
+  it("should not classify with intervals outside loose range (>35 days)", () => {
+    const baseDate = "2024-01-15";
+    const facts: FactRecord[] = [
+      createFact({ id: "1", dateValue: baseDate, amountValue: 100 }),
+      createFact({ id: "2", dateValue: daysFrom(baseDate, 40), amountValue: 100 }), // 40 days - too long
+      createFact({ id: "3", dateValue: daysFrom(baseDate, 80), amountValue: 100 }),
+      createFact({ id: "4", dateValue: daysFrom(baseDate, 120), amountValue: 100 }),
+    ];
+
+    const result = classifyMonthlyByEntity(facts);
+    const classification = result.get("TEST ENTITY");
+
+    expect(classification?.isMonthly).toBe(false);
+    expect(classification?.tier).toBe("none");
+  });
+
+  it("should require 4 occurrences for likely tier", () => {
+    const baseDate = "2024-01-15";
+    // Only 3 occurrences with loose intervals - not enough for likely tier
+    const facts: FactRecord[] = [
+      createFact({ id: "1", dateValue: baseDate, amountValue: 100 }),
+      createFact({ id: "2", dateValue: daysFrom(baseDate, 34), amountValue: 100 }), // 34 days - loose
+      createFact({ id: "3", dateValue: daysFrom(baseDate, 68), amountValue: 100 }),
+    ];
+
+    const result = classifyMonthlyByEntity(facts);
+    const classification = result.get("TEST ENTITY");
+
+    // Should not qualify as isMonthly since strict fails and likely needs 4
+    expect(classification?.isMonthly).toBe(false);
+  });
+
+  it("should track interval stats for both ranges", () => {
+    const baseDate = "2024-01-15";
+    const facts: FactRecord[] = [
+      createFact({ id: "1", dateValue: baseDate, amountValue: 100 }),
+      createFact({ id: "2", dateValue: daysFrom(baseDate, 30), amountValue: 100 }),
+      createFact({ id: "3", dateValue: daysFrom(baseDate, 60), amountValue: 100 }),
+    ];
+
+    const result = classifyMonthlyByEntity(facts);
+    const classification = result.get("TEST ENTITY");
+
+    expect(classification?.intervalStats?.withinRange).toBe(2);
+    expect(classification?.intervalStats?.withinLooseRange).toBe(2);
+  });
+});

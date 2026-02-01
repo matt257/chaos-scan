@@ -29,12 +29,16 @@ export interface BankCsvResult {
 }
 
 // Common column name patterns for bank CSVs
+// Order matters: posting date preferred over transaction date
 const DATE_PATTERNS = [
-  /^date$/i,
+  /^posted?[\s_-]?date$/i,      // Prefer posting date
+  /^posting[\s_-]?date$/i,
+  /^post[\s_-]?date$/i,
   /^trans(action)?[\s_-]?date$/i,
-  /^posted?[\s_-]?date$/i,
+  /^date$/i,
   /^value[\s_-]?date$/i,
   /^effective[\s_-]?date$/i,
+  /^settlement[\s_-]?date$/i,
 ];
 
 const DESCRIPTION_PATTERNS = [
@@ -176,38 +180,161 @@ export function parseClearingStatus(text: string | null): ClearingStatus {
   return "unknown";
 }
 
+// Month name mapping for text date parsing
+const MONTH_NAMES: Record<string, string> = {
+  jan: "01", january: "01",
+  feb: "02", february: "02",
+  mar: "03", march: "03",
+  apr: "04", april: "04",
+  may: "05",
+  jun: "06", june: "06",
+  jul: "07", july: "07",
+  aug: "08", august: "08",
+  sep: "09", sept: "09", september: "09",
+  oct: "10", october: "10",
+  nov: "11", november: "11",
+  dec: "12", december: "12",
+};
+
 /**
- * Parse date from various formats
+ * Parse date from various formats.
+ * Supports:
+ * - ISO: YYYY-MM-DD, YYYY/MM/DD
+ * - US: MM/DD/YYYY, M/D/YYYY, MM-DD-YYYY
+ * - Text: Jan 2, 2025, 02-Jan-2025, January 2 2025
+ * - With time: 2025-01-15 10:30:00, 01/15/2025 10:30 AM
  */
 export function parseDate(text: string | null): string | null {
   if (!text || text.trim() === "") return null;
 
-  const cleaned = text.trim();
+  // Remove time portion if present (keep date only)
+  let cleaned = text.trim();
 
-  // Try ISO format first
-  const isoMatch = cleaned.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  // Remove common time patterns
+  cleaned = cleaned.replace(/\s+\d{1,2}:\d{2}(:\d{2})?\s*(AM|PM)?$/i, "");
+  cleaned = cleaned.replace(/T\d{2}:\d{2}:\d{2}.*$/, ""); // ISO time
+  cleaned = cleaned.trim();
+
+  // Try ISO format first: YYYY-MM-DD
+  const isoMatch = cleaned.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
   if (isoMatch) {
-    return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
+    const month = isoMatch[2].padStart(2, "0");
+    const day = isoMatch[3].padStart(2, "0");
+    if (isValidDate(isoMatch[1], month, day)) {
+      return `${isoMatch[1]}-${month}-${day}`;
+    }
   }
 
-  // MM/DD/YYYY or MM-DD-YYYY
+  // YYYY/MM/DD
+  const altIsoMatch = cleaned.match(/^(\d{4})[\/](\d{1,2})[\/](\d{1,2})$/);
+  if (altIsoMatch) {
+    const month = altIsoMatch[2].padStart(2, "0");
+    const day = altIsoMatch[3].padStart(2, "0");
+    if (isValidDate(altIsoMatch[1], month, day)) {
+      return `${altIsoMatch[1]}-${month}-${day}`;
+    }
+  }
+
+  // MM/DD/YYYY or MM-DD-YYYY (US format)
   const usMatch = cleaned.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
   if (usMatch) {
     const month = usMatch[1].padStart(2, "0");
     const day = usMatch[2].padStart(2, "0");
-    return `${usMatch[3]}-${month}-${day}`;
+    if (isValidDate(usMatch[3], month, day)) {
+      return `${usMatch[3]}-${month}-${day}`;
+    }
   }
 
-  // DD/MM/YYYY (European) - harder to distinguish, assume US for now
-  // YYYY/MM/DD
-  const altMatch = cleaned.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/);
-  if (altMatch) {
-    const month = altMatch[2].padStart(2, "0");
-    const day = altMatch[3].padStart(2, "0");
-    return `${altMatch[1]}-${month}-${day}`;
+  // MM/DD/YY (2-digit year, assume 2000s)
+  const usShortMatch = cleaned.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2})$/);
+  if (usShortMatch) {
+    const month = usShortMatch[1].padStart(2, "0");
+    const day = usShortMatch[2].padStart(2, "0");
+    const year = parseInt(usShortMatch[3]) < 50 ? `20${usShortMatch[3]}` : `19${usShortMatch[3]}`;
+    if (isValidDate(year, month, day)) {
+      return `${year}-${month}-${day}`;
+    }
+  }
+
+  // Text format: "Jan 2, 2025" or "Jan 2 2025" or "January 2, 2025"
+  const textMatch1 = cleaned.match(/^([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})$/);
+  if (textMatch1) {
+    const monthName = textMatch1[1].toLowerCase();
+    const month = MONTH_NAMES[monthName];
+    if (month) {
+      const day = textMatch1[2].padStart(2, "0");
+      if (isValidDate(textMatch1[3], month, day)) {
+        return `${textMatch1[3]}-${month}-${day}`;
+      }
+    }
+  }
+
+  // Text format: "2 Jan 2025" or "02-Jan-2025" or "2-January-2025"
+  const textMatch2 = cleaned.match(/^(\d{1,2})[\s\-]([A-Za-z]+)[\s\-](\d{4})$/);
+  if (textMatch2) {
+    const monthName = textMatch2[2].toLowerCase();
+    const month = MONTH_NAMES[monthName];
+    if (month) {
+      const day = textMatch2[1].padStart(2, "0");
+      if (isValidDate(textMatch2[3], month, day)) {
+        return `${textMatch2[3]}-${month}-${day}`;
+      }
+    }
+  }
+
+  // Text format: "2025-Jan-02" or "2025/Jan/02"
+  const textMatch3 = cleaned.match(/^(\d{4})[\s\-\/]([A-Za-z]+)[\s\-\/](\d{1,2})$/);
+  if (textMatch3) {
+    const monthName = textMatch3[2].toLowerCase();
+    const month = MONTH_NAMES[monthName];
+    if (month) {
+      const day = textMatch3[3].padStart(2, "0");
+      if (isValidDate(textMatch3[1], month, day)) {
+        return `${textMatch3[1]}-${month}-${day}`;
+      }
+    }
+  }
+
+  // Try parsing with Date object as last resort (handles many edge cases)
+  try {
+    const parsed = new Date(cleaned);
+    if (!isNaN(parsed.getTime())) {
+      const year = parsed.getFullYear();
+      // Sanity check: year should be reasonable (1990-2100)
+      if (year >= 1990 && year <= 2100) {
+        const month = String(parsed.getMonth() + 1).padStart(2, "0");
+        const day = String(parsed.getDate()).padStart(2, "0");
+        return `${year}-${month}-${day}`;
+      }
+    }
+  } catch {
+    // Date parsing failed, return null
   }
 
   return null;
+}
+
+/**
+ * Validate date components
+ */
+function isValidDate(year: string, month: string, day: string): boolean {
+  const y = parseInt(year);
+  const m = parseInt(month);
+  const d = parseInt(day);
+
+  if (y < 1990 || y > 2100) return false;
+  if (m < 1 || m > 12) return false;
+  if (d < 1 || d > 31) return false;
+
+  // Basic month/day validation
+  const daysInMonth = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  if (m === 2 && ((y % 4 === 0 && y % 100 !== 0) || y % 400 === 0)) {
+    if (d > 29) return false;
+  } else if (d > daysInMonth[m - 1]) {
+    return false;
+  }
+
+  return true;
 }
 
 /**
