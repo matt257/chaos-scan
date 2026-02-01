@@ -94,21 +94,26 @@ Vercel will automatically run the build and deploy your app.
 
 **Important**: Vercel does not run database migrations automatically. After deploying to Vercel with a new Neon database, you must apply the schema manually.
 
-Run from your local machine with `DATABASE_URL` pointing to your production Neon database:
+### After any schema change, run:
 
 ```bash
-# Preferred: apply migrations (tracks history)
-npx prisma migrate deploy
+# Set your production DATABASE_URL (from Vercel/Neon dashboard)
+export DATABASE_URL="postgresql://user:pass@host/db?sslmode=require"
 
-# Fallback: push schema directly (if no migrations exist)
-npx prisma db push
+# Apply all pending migrations
+npx prisma migrate deploy
 ```
 
-**Production workflow**:
+### Production workflow:
 1. Develop locally with `prisma migrate dev` (creates migration files)
 2. Commit migration files in `prisma/migrations/`
 3. Deploy to Vercel
-4. Run `prisma migrate deploy` locally against production DATABASE_URL
+4. **Run `npx prisma migrate deploy` locally against production DATABASE_URL**
+
+### Fallback (if no migrations exist):
+```bash
+npx prisma db push
+```
 
 **Why not automatic?** Prisma migrations require a direct database connection. Vercel build runs in an isolated environment without persistent DB access. Running migrations from your local machine (or CI) with the production DATABASE_URL is the standard pattern.
 
@@ -214,11 +219,46 @@ https://your-app.vercel.app/api/_debug/db?DEBUG_TOKEN=your-token
 
 This returns JSON with current database, tables, and casing info.
 
+### "Column does not exist" error
+
+If you see an error like:
+```
+Invalid prisma.fact.create() invocation: The column entityRaw does not exist in the current database.
+```
+
+**Cause**: Code expects new columns but migrations haven't been applied to production.
+
+**Fix**:
+```bash
+# 1. Get your production DATABASE_URL from Vercel dashboard
+export DATABASE_URL="postgresql://..."
+
+# 2. Apply pending migrations
+npx prisma migrate deploy
+
+# 3. Verify the schema (optional)
+# Visit: https://your-app.vercel.app/api/_debug/schema?DEBUG_TOKEN=your-token
+```
+
+### Schema debug endpoint
+
+Add `DEBUG_TOKEN` to Vercel env vars, then visit:
+```
+https://your-app.vercel.app/api/_debug/schema?DEBUG_TOKEN=your-token
+```
+
+This returns:
+- List of tables in the database
+- All columns on the Fact table
+- Missing expected columns
+- Recent applied migrations
+
 ### Common issues
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
 | No tables | Migrations not applied | `npx prisma migrate deploy` |
+| Column does not exist | New migration not applied | `npx prisma migrate deploy` |
 | Wrong database | Wrong DATABASE_URL in Vercel | Copy correct URL from Neon |
 | Tables in wrong schema | Non-public schema | Ensure `?schema=public` in URL or use default |
 

@@ -206,6 +206,44 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ scanId: scan.id });
   } catch (error) {
     console.error("Scan error:", error);
+
+    // Check for schema mismatch errors (column does not exist)
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    if (
+      errorMessage.includes("column") &&
+      errorMessage.includes("does not exist")
+    ) {
+      // Extract column name if possible
+      const columnMatch = errorMessage.match(/column[s]?\s+["']?(\w+)["']?/i);
+      const columnName = columnMatch ? columnMatch[1] : "unknown";
+
+      return NextResponse.json(
+        {
+          error: "Database schema is out of date",
+          details: `Missing column: ${columnName}`,
+          fix: "Run 'npx prisma migrate deploy' against the production database",
+          code: "SCHEMA_MISMATCH",
+        },
+        { status: 500 }
+      );
+    }
+
+    // Check for other Prisma errors that indicate schema issues
+    if (
+      errorMessage.includes("table") &&
+      errorMessage.includes("does not exist")
+    ) {
+      return NextResponse.json(
+        {
+          error: "Database schema is out of date",
+          details: "Required table does not exist",
+          fix: "Run 'npx prisma migrate deploy' against the production database",
+          code: "SCHEMA_MISMATCH",
+        },
+        { status: 500 }
+      );
+    }
+
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Internal server error" },
       { status: 500 }
