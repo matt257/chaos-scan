@@ -4,6 +4,106 @@ import Link from "next/link";
 import { ChaosReport } from "./ChaosReport";
 import { FactsTable } from "./FactsTable";
 
+interface FactWithBankFields {
+  id: string;
+  entityName: string | null;
+  entityCanonical: string | null;
+  amountValue: number | null;
+  amountCurrency: string | null;
+  dateValue: string | null;
+  direction: string;
+  clearingStatus: string;
+}
+
+interface BankInsights {
+  recurringMerchantCount: number;
+  recurringMerchants: Array<{
+    name: string;
+    monthlyAmount: number | null;
+    currency: string | null;
+    occurrences: number;
+  }>;
+  totalMonthlyRecurring: number | null;
+  recurringCurrency: string | null;
+  canSumRecurring: boolean;
+  totalTransactions: number;
+  totalOutflows: number;
+  dateRange: { start: string; end: string } | null;
+}
+
+// Simple median calculation
+function median(values: number[]): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+// Compute bank insights from facts (server-side)
+function computeBankInsights(facts: FactWithBankFields[]): BankInsights {
+  const outflows = facts.filter(
+    (f) => f.direction === "outflow" && f.clearingStatus === "cleared" && f.amountValue !== null
+  );
+
+  // Group by entity
+  const byEntity = new Map<string, FactWithBankFields[]>();
+  for (const fact of outflows) {
+    const key = fact.entityCanonical || fact.entityName || "_unknown_";
+    if (!byEntity.has(key)) byEntity.set(key, []);
+    byEntity.get(key)!.push(fact);
+  }
+
+  // Find monthly recurring (simplified: 3+ occurrences with consistent amounts)
+  const recurringMerchants: BankInsights["recurringMerchants"] = [];
+  const currencies = new Set<string>();
+
+  for (const [entityKey, entityFacts] of byEntity) {
+    if (entityFacts.length < 3) continue;
+
+    const amounts = entityFacts.map((f) => Math.abs(f.amountValue!));
+    const medianAmount = median(amounts);
+
+    // Check amount stability (within 10%)
+    const isStable = amounts.every((a) => Math.abs(a - medianAmount) / medianAmount <= 0.1);
+    if (!isStable) continue;
+
+    const currency = entityFacts[0].amountCurrency;
+    if (currency) currencies.add(currency);
+
+    recurringMerchants.push({
+      name: entityFacts[0].entityName || entityKey,
+      monthlyAmount: medianAmount,
+      currency,
+      occurrences: entityFacts.length,
+    });
+  }
+
+  // Sort by amount
+  recurringMerchants.sort((a, b) => (b.monthlyAmount || 0) - (a.monthlyAmount || 0));
+
+  const canSumRecurring =
+    recurringMerchants.length > 0 &&
+    currencies.size === 1 &&
+    recurringMerchants.every((m) => m.monthlyAmount !== null);
+
+  const totalMonthlyRecurring = canSumRecurring
+    ? recurringMerchants.reduce((sum, m) => sum + (m.monthlyAmount || 0), 0)
+    : null;
+
+  const dates = facts.filter((f) => f.dateValue).map((f) => f.dateValue!).sort();
+
+  return {
+    recurringMerchantCount: recurringMerchants.length,
+    recurringMerchants,
+    totalMonthlyRecurring,
+    recurringCurrency: recurringMerchants[0]?.currency || null,
+    canSumRecurring,
+    totalTransactions: facts.length,
+    totalOutflows: outflows.length,
+    dateRange: dates.length > 0 ? { start: dates[0], end: dates[dates.length - 1] } : null,
+  };
+}
+
 interface PageProps {
   params: Promise<{ id: string }>;
 }
@@ -70,6 +170,17 @@ export default async function ScanPage({ params }: PageProps) {
     return b.confidence - a.confidence;
   });
 
+  // Detect scan mode from facts
+  const factsWithDirection = scan.facts.filter(
+    (f) => f.direction === "inflow" || f.direction === "outflow"
+  );
+  const scanMode = factsWithDirection.length / Math.max(scan.facts.length, 1) > 0.8
+    ? "bank" as const
+    : "billing" as const;
+
+  // Compute bank insights if in bank mode
+  const bankInsights = scanMode === "bank" ? computeBankInsights(scan.facts) : null;
+
   return (
     <div className="container">
       <div className="top-nav">
@@ -87,7 +198,7 @@ export default async function ScanPage({ params }: PageProps) {
         )}
       </div>
 
-      <h1>Revenue & Billing Chaos Scan</h1>
+      <h1>{scanMode === "bank" ? "Bank & Card Transaction Chaos Scan" : "Revenue & Billing Chaos Scan"}</h1>
 
       <div className="card">
         <div className="meta-info">
@@ -141,6 +252,8 @@ export default async function ScanPage({ params }: PageProps) {
         issues={sortedIssues}
         executiveSummary={scan.executiveSummary}
         facts={scan.facts}
+        scanMode={scanMode}
+        bankInsights={bankInsights}
       />
 
       <FactsTable facts={scan.facts} />

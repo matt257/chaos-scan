@@ -800,3 +800,68 @@ tr:hover {
   font-size: 0.8em;
   cursor: help;
 }
+
+/* Bank Insights Section */
+.bank-insights {
+  background: linear-gradient(135deg, #f0f7ff 0%, #f5f8ff 100%);
+  border: 1px solid #c7deff;
+}
+
+.bank-insights h3 {
+  color: #0052a3;
+}
+
+.insights-summary {
+  display: flex;
+  gap: 2rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+
+.insight-stat {
+  display: flex;
+  flex-direction: column;
+}
+
+.insight-stat .stat-value {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: #0052a3;
+}
+
+.insight-stat .stat-label {
+  font-size: 0.75rem;
+  color: #4a7ab5;
+  text-transform: uppercase;
+}
+
+.recurring-list {
+  margin-top: 1rem;
+}
+
+.recurring-table {
+  font-size: 0.85rem;
+}
+
+.recurring-table th {
+  background: #e8f0ff;
+  color: #0052a3;
+  font-weight: 500;
+  padding: 0.5rem 0.75rem;
+}
+
+.recurring-table td {
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid #e8f0ff;
+}
+
+.recurring-table tr:hover {
+  background: #f8faff;
+}
+
+.more-hint {
+  margin-top: 0.75rem;
+  font-size: 0.8rem;
+  color: #4a7ab5;
+  text-align: center;
+}

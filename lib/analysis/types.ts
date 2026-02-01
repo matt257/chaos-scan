@@ -4,7 +4,11 @@ export type IssueType =
   | "unpaid_invoice_aging"
   | "recurring_payment_gap"
   | "amount_drift"
-  | "duplicate_charge";
+  | "duplicate_charge"
+  // Bank-specific issue types
+  | "new_recurring_charge"
+  | "price_creep"
+  | "unusual_spike";
 
 export interface EvidenceStats {
   count: number;
@@ -58,4 +62,8 @@ export const ISSUE_TYPE_LABELS: Record<IssueType, string> = {
   recurring_payment_gap: "Recurring Payment Gap",
   amount_drift: "Amount Drift",
   duplicate_charge: "Possible Duplicate Charge",
+  // Bank-specific labels
+  new_recurring_charge: "New Recurring Charge",
+  price_creep: "Price Increase",
+  unusual_spike: "Unusual Charge Amount",
 };

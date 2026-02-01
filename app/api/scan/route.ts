@@ -153,8 +153,12 @@ export async function POST(request: NextRequest) {
     // Run analysis with pruning
     const analysisResult = runAnalysis(factRecords);
 
-    // Generate summary with prune stats
-    const summary = await generateSummary(analysisResult.issues, analysisResult.pruneStats);
+    // Generate summary with prune stats and scan mode
+    const summary = await generateSummary(
+      analysisResult.issues,
+      analysisResult.pruneStats,
+      { scanMode: analysisResult.scanMode }
+    );
 
     // Save issues and evidence
     for (const issue of analysisResult.issues) {

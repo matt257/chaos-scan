@@ -16,6 +16,26 @@ const DEFAULT_PRUNE_OPTIONS: PruneOptions = {
     recurring_payment_gap: 3,
     amount_drift: 4,
     duplicate_charge: 2,
+    // Bank-specific detectors
+    new_recurring_charge: 3,
+    price_creep: 4,
+    unusual_spike: 6,
+  },
+};
+
+// Bank mode uses tighter per-entity caps to reduce noise
+export const BANK_MODE_PRUNE_OPTIONS: Partial<PruneOptions> = {
+  maxIssues: 8,
+  maxPerEntity: 1, // Tighter cap for bank mode
+  allowLowSeverity: true, // Will be adjusted dynamically based on issue count
+  minEvidenceByType: {
+    unpaid_invoice_aging: 1,
+    recurring_payment_gap: 3,
+    amount_drift: 4,
+    duplicate_charge: 2,
+    new_recurring_charge: 3,
+    price_creep: 4,
+    unusual_spike: 6,
   },
 };
 

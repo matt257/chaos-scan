@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import { ProposedIssue } from "./types";
+import { ScanMode } from "./scanMode";
 
 export interface PruneStats {
   totalBeforePrune: number;
@@ -16,6 +17,10 @@ export interface SummaryResult {
   executiveSummary: string;
   issueTitles: string[];
   capMessage: string | null;
+}
+
+export interface SummaryOptions {
+  scanMode?: ScanMode;
 }
 
 function formatCurrency(amount: number | null, currency: string | null): string {
@@ -50,17 +55,33 @@ function generateCapMessage(pruneStats: PruneStats | null): string | null {
 
 function generateDeterministicSummary(
   issues: ProposedIssue[],
-  pruneStats: PruneStats | null
+  pruneStats: PruneStats | null,
+  scanMode: ScanMode = "billing"
 ): SummaryResult {
   const capMessage = generateCapMessage(pruneStats);
 
+  // Mode-specific terminology
+  const terminology = scanMode === "bank"
+    ? {
+        domain: "bank/card transaction",
+        issueType: "charge",
+        noIssues: "No high-confidence issues were detected in your bank/card transactions. " +
+          "The analysis applied conservative rules for recurring charges, price changes, " +
+          "duplicates, and unusual amounts. This does not guarantee absence of issues—" +
+          "only that none met the detection thresholds.",
+      }
+    : {
+        domain: "billing/revenue",
+        issueType: "billing/revenue issue",
+        noIssues: "No high-confidence billing or revenue issues were detected in this scan. " +
+          "The analysis applied conservative rules for invoice aging, payment gaps, " +
+          "amount drift, and duplicate charges. This does not guarantee absence of issues—" +
+          "only that none met the detection thresholds.",
+      };
+
   if (issues.length === 0) {
     return {
-      executiveSummary:
-        "No high-confidence billing or revenue issues were detected in this scan. " +
-        "The analysis applied conservative rules for invoice aging, payment gaps, " +
-        "amount drift, and duplicate charges. This does not guarantee absence of issues—" +
-        "only that none met the detection thresholds.",
+      executiveSummary: terminology.noIssues,
       issueTitles: [],
       capMessage,
     };
@@ -90,7 +111,7 @@ function generateDeterministicSummary(
   if (lowCount > 0) severitySummary.push(`${lowCount} low-severity`);
 
   const executiveSummary =
-    `This scan identified ${issues.length} potential billing/revenue issue(s): ` +
+    `This scan identified ${issues.length} potential ${terminology.domain} issue(s): ` +
     `${severitySummary.join(", ")}.${impactSummary} ` +
     `These findings are based on pattern detection and require manual verification. ` +
     `No recommendations are provided—review the evidence and apply business judgment.`;
@@ -114,19 +135,21 @@ Issues:`;
 
 export async function generateSummary(
   issues: ProposedIssue[],
-  pruneStats: PruneStats | null = null
+  pruneStats: PruneStats | null = null,
+  options: SummaryOptions = {}
 ): Promise<SummaryResult> {
   const apiKey = process.env.OPENAI_API_KEY;
   const capMessage = generateCapMessage(pruneStats);
+  const scanMode = options.scanMode || "billing";
 
   // Fallback to deterministic summary if no API key
   if (!apiKey || apiKey === "sk-...") {
-    return generateDeterministicSummary(issues, pruneStats);
+    return generateDeterministicSummary(issues, pruneStats, scanMode);
   }
 
   // Also use deterministic for empty issues
   if (issues.length === 0) {
-    return generateDeterministicSummary(issues, pruneStats);
+    return generateDeterministicSummary(issues, pruneStats, scanMode);
   }
 
   try {
@@ -169,6 +192,6 @@ export async function generateSummary(
     };
   } catch (error) {
     console.error("AI summary generation failed, using fallback:", error);
-    return generateDeterministicSummary(issues, pruneStats);
+    return generateDeterministicSummary(issues, pruneStats, scanMode);
   }
 }

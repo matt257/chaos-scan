@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 
+type ScanMode = "bank" | "billing";
+
 interface Fact {
   id: string;
   factType: string;
@@ -14,6 +16,24 @@ interface Fact {
   recurrence: string;
   sourceReference: string;
   confidence: number;
+  direction?: string;
+  clearingStatus?: string;
+}
+
+interface BankInsights {
+  recurringMerchantCount: number;
+  recurringMerchants: Array<{
+    name: string;
+    monthlyAmount: number | null;
+    currency: string | null;
+    occurrences: number;
+  }>;
+  totalMonthlyRecurring: number | null;
+  recurringCurrency: string | null;
+  canSumRecurring: boolean;
+  totalTransactions: number;
+  totalOutflows: number;
+  dateRange: { start: string; end: string } | null;
 }
 
 interface Evidence {
@@ -53,6 +73,8 @@ interface ChaosReportProps {
   issues: Issue[];
   executiveSummary: string | null;
   facts: Fact[];
+  scanMode?: ScanMode;
+  bankInsights?: BankInsights | null;
 }
 
 const NOT_FLAGGED_DEFAULTS = [
@@ -61,6 +83,15 @@ const NOT_FLAGGED_DEFAULTS = [
 ];
 
 const MAX_ISSUES_CAP = 8;
+
+// Detect scan mode from facts (client-side helper)
+function detectScanModeFromFacts(facts: Fact[]): ScanMode {
+  if (facts.length === 0) return "billing";
+  const factsWithDirection = facts.filter(
+    (f) => f.direction === "inflow" || f.direction === "outflow"
+  );
+  return factsWithDirection.length / facts.length > 0.8 ? "bank" : "billing";
+}
 
 function formatCurrency(amount: number | null, currency: string | null): string {
   if (amount === null) return "unknown";
@@ -208,10 +239,14 @@ function IssueCard({ issue }: { issue: Issue }) {
   );
 }
 
-export function ChaosReport({ issues, executiveSummary, facts }: ChaosReportProps) {
+export function ChaosReport({ issues, executiveSummary, facts, scanMode, bankInsights }: ChaosReportProps) {
   const highCount = issues.filter((i) => i.severity === "high").length;
   const mediumCount = issues.filter((i) => i.severity === "medium").length;
   const lowCount = issues.filter((i) => i.severity === "low").length;
+
+  // Detect scan mode from facts if not provided
+  const effectiveScanMode = scanMode || detectScanModeFromFacts(facts);
+  const isBankMode = effectiveScanMode === "bank";
 
   // Check if we hit the cap
   const isCapped = issues.length >= MAX_ISSUES_CAP;
@@ -224,30 +259,57 @@ export function ChaosReport({ issues, executiveSummary, facts }: ChaosReportProp
     totalImpact = formatCurrency(total, issuesWithImpact[0].currency);
   }
 
-  // Generate not-flagged items based on facts
+  // Generate not-flagged items based on scan mode
   const notFlagged: string[] = [];
-  const invoiceCount = facts.filter((f) => f.factType === "invoice").length;
-  const paymentCount = facts.filter((f) => f.factType === "payment").length;
-  const subscriptionCount = facts.filter((f) => f.factType === "subscription").length;
 
-  if (invoiceCount > 0 && !issues.some((i) => i.issueType === "unpaid_invoice_aging")) {
-    notFlagged.push("All invoices are current (none past 45-day threshold)");
-  }
-  if (paymentCount >= 3 && !issues.some((i) => i.issueType === "recurring_payment_gap")) {
-    notFlagged.push("No gaps detected in recurring payment patterns");
-  }
-  if (paymentCount >= 4 && !issues.some((i) => i.issueType === "amount_drift")) {
-    notFlagged.push("Recurring payment amounts are stable");
-  }
-  if (paymentCount >= 2 && !issues.some((i) => i.issueType === "duplicate_charge")) {
-    notFlagged.push("No duplicate charges detected");
-  }
-  if (subscriptionCount > 0) {
-    const activeCount = facts.filter(
-      (f) => f.factType === "subscription" && f.status === "active"
+  if (isBankMode) {
+    // Bank mode not-flagged items
+    const outflowCount = facts.filter(
+      (f) => f.direction === "outflow" && f.clearingStatus === "cleared"
     ).length;
-    if (activeCount > 0) {
-      notFlagged.push(`${activeCount} active subscription(s) confirmed`);
+
+    if (outflowCount >= 10 && !issues.some((i) => i.issueType === "new_recurring_charge")) {
+      notFlagged.push("No new recurring charges started in the last 60 days");
+    }
+    if (outflowCount >= 10 && !issues.some((i) => i.issueType === "price_creep")) {
+      notFlagged.push("No significant price increases on recurring charges");
+    }
+    if (outflowCount >= 2 && !issues.some((i) => i.issueType === "duplicate_charge")) {
+      notFlagged.push("No duplicate charges detected");
+    }
+    if (outflowCount >= 10 && !issues.some((i) => i.issueType === "unusual_spike")) {
+      notFlagged.push("No unusually high charges vs merchant baselines");
+    }
+    if (bankInsights && bankInsights.recurringMerchantCount > 0) {
+      notFlagged.push(
+        `${bankInsights.recurringMerchantCount} recurring merchant(s) with stable patterns`
+      );
+    }
+  } else {
+    // Billing mode not-flagged items
+    const invoiceCount = facts.filter((f) => f.factType === "invoice").length;
+    const paymentCount = facts.filter((f) => f.factType === "payment").length;
+    const subscriptionCount = facts.filter((f) => f.factType === "subscription").length;
+
+    if (invoiceCount > 0 && !issues.some((i) => i.issueType === "unpaid_invoice_aging")) {
+      notFlagged.push("All invoices are current (none past 45-day threshold)");
+    }
+    if (paymentCount >= 3 && !issues.some((i) => i.issueType === "recurring_payment_gap")) {
+      notFlagged.push("No gaps detected in recurring payment patterns");
+    }
+    if (paymentCount >= 4 && !issues.some((i) => i.issueType === "amount_drift")) {
+      notFlagged.push("Recurring payment amounts are stable");
+    }
+    if (paymentCount >= 2 && !issues.some((i) => i.issueType === "duplicate_charge")) {
+      notFlagged.push("No duplicate charges detected");
+    }
+    if (subscriptionCount > 0) {
+      const activeCount = facts.filter(
+        (f) => f.factType === "subscription" && f.status === "active"
+      ).length;
+      if (activeCount > 0) {
+        notFlagged.push(`${activeCount} active subscription(s) confirmed`);
+      }
     }
   }
 
@@ -255,9 +317,17 @@ export function ChaosReport({ issues, executiveSummary, facts }: ChaosReportProp
     notFlagged.push(...NOT_FLAGGED_DEFAULTS);
   }
 
+  const reportTitle = isBankMode
+    ? "Bank & Card Transaction Chaos Report"
+    : "Chaos Report";
+
+  const noIssuesMessage = isBankMode
+    ? "No high-confidence issues detected in your transactions (conservative scan)."
+    : "No high-confidence issues detected (conservative scan).";
+
   return (
     <div className="chaos-report">
-      <h2>Chaos Report</h2>
+      <h2>{reportTitle}</h2>
 
       {/* Executive Summary */}
       <div className="card executive-summary">
@@ -308,7 +378,7 @@ export function ChaosReport({ issues, executiveSummary, facts }: ChaosReportProp
         </div>
         {issues.length === 0 ? (
           <div className="no-issues">
-            <p>No high-confidence issues detected (conservative scan).</p>
+            <p>{noIssuesMessage}</p>
             <p className="hint">
               This does not guarantee absence of issues—only that none met the detection thresholds.
             </p>
@@ -321,6 +391,58 @@ export function ChaosReport({ issues, executiveSummary, facts }: ChaosReportProp
           </div>
         )}
       </div>
+
+      {/* Bank Insights - only shown in bank mode */}
+      {isBankMode && bankInsights && bankInsights.recurringMerchantCount > 0 && (
+        <div className="card bank-insights">
+          <h3>Recurring Charges Summary</h3>
+          <div className="insights-summary">
+            <div className="insight-stat">
+              <span className="stat-value">{bankInsights.recurringMerchantCount}</span>
+              <span className="stat-label">Monthly Recurring</span>
+            </div>
+            {bankInsights.canSumRecurring && bankInsights.totalMonthlyRecurring !== null && (
+              <div className="insight-stat">
+                <span className="stat-value">
+                  {formatCurrency(bankInsights.totalMonthlyRecurring, bankInsights.recurringCurrency)}
+                </span>
+                <span className="stat-label">Est. Monthly Spend</span>
+              </div>
+            )}
+          </div>
+          {bankInsights.recurringMerchants.length > 0 && (
+            <div className="recurring-list">
+              <table className="recurring-table">
+                <thead>
+                  <tr>
+                    <th>Merchant</th>
+                    <th>Monthly Amount</th>
+                    <th>Occurrences</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {bankInsights.recurringMerchants.slice(0, 10).map((m, i) => (
+                    <tr key={i}>
+                      <td>{m.name}</td>
+                      <td>
+                        {m.monthlyAmount !== null
+                          ? formatCurrency(m.monthlyAmount, m.currency)
+                          : "-"}
+                      </td>
+                      <td>{m.occurrences}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {bankInsights.recurringMerchants.length > 10 && (
+                <p className="more-hint">
+                  +{bankInsights.recurringMerchants.length - 10} more recurring merchants
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* What we did NOT flag */}
       <div className="card not-flagged">
