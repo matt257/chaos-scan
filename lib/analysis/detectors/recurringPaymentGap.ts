@@ -1,6 +1,7 @@
 import { FactRecord, ProposedIssue } from "../types";
 import { calculatePaymentGapImpact, formatImpactRationale } from "../impact";
 import { generatePaymentGapSummary } from "../evidenceSummary";
+import { RecurrenceClassification } from "../recurrence/types";
 
 const GAP_THRESHOLD_DAYS = 45;
 const MIN_PAYMENTS_FOR_PATTERN = 3;
@@ -14,14 +15,49 @@ function daysBetween(date1: Date, date2: Date): number {
   return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 }
 
-export function detectRecurringPaymentGap(facts: FactRecord[]): ProposedIssue[] {
-  const issues: ProposedIssue[] = [];
+function getEntityKey(fact: FactRecord): string {
+  return fact.entityCanonical || fact.entityName || "_unknown_";
+}
 
-  // Find payments with explicit monthly recurrence
+/**
+ * Check if a fact should be treated as monthly recurring.
+ * Uses stored recurrence first, then falls back to derived classification.
+ */
+function isMonthlyRecurring(
+  fact: FactRecord,
+  derivedRecurrence?: Map<string, RecurrenceClassification>
+): boolean {
+  // If stored recurrence is monthly, use that
+  if (fact.recurrence === "monthly") {
+    return true;
+  }
+
+  // If we have derived classification and stored is unknown, check derived
+  if (derivedRecurrence && fact.recurrence === "one_time") {
+    const entityKey = getEntityKey(fact);
+    const classification = derivedRecurrence.get(entityKey);
+    return classification?.isMonthly ?? false;
+  }
+
+  return false;
+}
+
+export interface RecurringPaymentGapOptions {
+  derivedRecurrence?: Map<string, RecurrenceClassification>;
+}
+
+export function detectRecurringPaymentGap(
+  facts: FactRecord[],
+  options?: RecurringPaymentGapOptions
+): ProposedIssue[] {
+  const issues: ProposedIssue[] = [];
+  const derivedRecurrence = options?.derivedRecurrence;
+
+  // Find payments that are monthly (stored or derived)
   const monthlyPayments = facts.filter(
     (f) =>
       f.factType === "payment" &&
-      f.recurrence === "monthly" &&
+      isMonthlyRecurring(f, derivedRecurrence) &&
       f.dateValue &&
       f.status === "paid"
   );
@@ -33,7 +69,7 @@ export function detectRecurringPaymentGap(facts: FactRecord[]): ProposedIssue[] 
   // Group by canonical entity (falls back to entityName for non-bank transactions)
   const byEntity = new Map<string, FactRecord[]>();
   for (const payment of monthlyPayments) {
-    const key = payment.entityCanonical || payment.entityName || "_unknown_";
+    const key = getEntityKey(payment);
     if (!byEntity.has(key)) {
       byEntity.set(key, []);
     }
@@ -86,10 +122,18 @@ export function detectRecurringPaymentGap(facts: FactRecord[]): ProposedIssue[] 
     // Use the original entityName for display (not the canonical key)
     const displayName = entity === "_unknown_" ? null : (sorted[0].entityName || entity);
 
+    // Check if this entity uses derived monthly classification
+    const usedDerivedRecurrence = derivedRecurrence?.get(entity)?.isMonthly &&
+      sorted.some((p) => p.recurrence !== "monthly");
+
     const rationale: string[] = [
       `${sorted.length} monthly payments detected for this entity`,
       `Gap of ${lastGap.gapDays} days after ${lastGap.afterDate} (expected ~30 days)`,
     ];
+
+    if (usedDerivedRecurrence) {
+      rationale.push("Monthly cadence derived from transaction pattern");
+    }
 
     if (monthsMissed > 0) {
       rationale.push(`Approximately ${monthsMissed} payment(s) may be missing`);

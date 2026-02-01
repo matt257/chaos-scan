@@ -6,6 +6,7 @@ import {
   detectDuplicateCharges,
 } from "./detectors";
 import { pruneIssues, PruneOptions } from "./pruneIssues";
+import { classifyMonthlyByEntity } from "./recurrence";
 
 export interface AnalysisOptions {
   prune?: Partial<PruneOptions>;
@@ -31,14 +32,18 @@ export function runAnalysis(
   const rawIssues: ProposedIssue[] = [];
   const notFlagged: string[] = [];
 
+  // Derive monthly recurrence classification for bank transactions
+  // This is used by gap/drift detectors when stored recurrence is unknown
+  const derivedRecurrence = classifyMonthlyByEntity(facts);
+
   // Run all detectors
   const unpaidAging = detectUnpaidInvoiceAging(facts);
   rawIssues.push(...unpaidAging);
 
-  const paymentGaps = detectRecurringPaymentGap(facts);
+  const paymentGaps = detectRecurringPaymentGap(facts, { derivedRecurrence });
   rawIssues.push(...paymentGaps);
 
-  const amountDrifts = detectAmountDrift(facts);
+  const amountDrifts = detectAmountDrift(facts, { derivedRecurrence });
   rawIssues.push(...amountDrifts);
 
   const duplicates = detectDuplicateCharges(facts);

@@ -1,6 +1,7 @@
 import { FactRecord, ProposedIssue } from "../types";
 import { calculateDriftImpact, formatImpactRationale } from "../impact";
 import { generateAmountDriftSummary } from "../evidenceSummary";
+import { RecurrenceClassification } from "../recurrence/types";
 
 const MIN_OCCURRENCES = 4;
 const DRIFT_THRESHOLD = 0.2; // 20%
@@ -18,14 +19,49 @@ function median(values: number[]): number {
     : (sorted[mid - 1] + sorted[mid]) / 2;
 }
 
-export function detectAmountDrift(facts: FactRecord[]): ProposedIssue[] {
-  const issues: ProposedIssue[] = [];
+function getEntityKey(fact: FactRecord): string {
+  return fact.entityCanonical || fact.entityName || "_unknown_";
+}
 
-  // Find payments with monthly recurrence and amounts
+/**
+ * Check if a fact should be treated as monthly recurring.
+ * Uses stored recurrence first, then falls back to derived classification.
+ */
+function isMonthlyRecurring(
+  fact: FactRecord,
+  derivedRecurrence?: Map<string, RecurrenceClassification>
+): boolean {
+  // If stored recurrence is monthly, use that
+  if (fact.recurrence === "monthly") {
+    return true;
+  }
+
+  // If we have derived classification and stored is unknown, check derived
+  if (derivedRecurrence && fact.recurrence === "one_time") {
+    const entityKey = getEntityKey(fact);
+    const classification = derivedRecurrence.get(entityKey);
+    return classification?.isMonthly ?? false;
+  }
+
+  return false;
+}
+
+export interface AmountDriftOptions {
+  derivedRecurrence?: Map<string, RecurrenceClassification>;
+}
+
+export function detectAmountDrift(
+  facts: FactRecord[],
+  options?: AmountDriftOptions
+): ProposedIssue[] {
+  const issues: ProposedIssue[] = [];
+  const derivedRecurrence = options?.derivedRecurrence;
+
+  // Find payments with monthly recurrence (stored or derived) and amounts
   const monthlyPayments = facts.filter(
     (f) =>
       f.factType === "payment" &&
-      f.recurrence === "monthly" &&
+      isMonthlyRecurring(f, derivedRecurrence) &&
       f.dateValue &&
       f.amountValue !== null
   );
@@ -37,7 +73,7 @@ export function detectAmountDrift(facts: FactRecord[]): ProposedIssue[] {
   // Group by canonical entity (falls back to entityName for non-bank transactions)
   const byEntity = new Map<string, FactRecord[]>();
   for (const payment of monthlyPayments) {
-    const key = payment.entityCanonical || payment.entityName || "_unknown_";
+    const key = getEntityKey(payment);
     if (!byEntity.has(key)) {
       byEntity.set(key, []);
     }
@@ -90,12 +126,20 @@ export function detectAmountDrift(facts: FactRecord[]): ProposedIssue[] {
     // Use the original entityName for display (not the canonical key)
     const displayName = entity === "_unknown_" ? null : (sorted[0].entityName || entity);
 
+    // Check if this entity uses derived monthly classification
+    const usedDerivedRecurrence = derivedRecurrence?.get(entity)?.isMonthly &&
+      sorted.some((p) => p.recurrence !== "monthly");
+
     const rationale: string[] = [
       `${sorted.length} monthly payments analyzed`,
       `Prior stable amount: ${priorMedian.toFixed(2)}/month`,
       `Recent average: ${recentAvg.toFixed(2)}/month`,
       `Decrease of ${driftPercent.toFixed(1)}% detected`,
     ];
+
+    if (usedDerivedRecurrence) {
+      rationale.push("Monthly cadence derived from transaction pattern");
+    }
 
     const impactRationale = formatImpactRationale(impact);
     if (impactRationale) {
